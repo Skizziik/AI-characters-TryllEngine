@@ -1,0 +1,11 @@
+{
+  "name": "tryll-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Localhost bridge: browser HTTP/SSE (CORS) <-> tryll_server TCP/FlatBuffers (:9100).",
+  "scripts": {
+    "probe": "bun run src/probe.ts",
+    "dev": "bun run src/server.ts"
+  }
+}
