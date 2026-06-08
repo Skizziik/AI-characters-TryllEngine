@@ -7,6 +7,7 @@ import type { Persona, StackState } from "@/lib/types";
 import { PersonaCard } from "./PersonaCard";
 import { ActivatePanel } from "./ActivatePanel";
 import { LanguagePicker } from "./LanguagePicker";
+import { useRuns } from "@/lib/useRuns";
 
 export function PersonaGallery({
   state,
@@ -22,6 +23,12 @@ export function PersonaGallery({
   onLanguageChange: (code: string) => void;
 }) {
   const ready = state.phase === "ready";
+  const { counts, increment } = useRuns();
+
+  const handlePick = (p: Persona) => {
+    increment(p.id);
+    onPick(p);
+  };
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-12">
@@ -62,7 +69,14 @@ export function PersonaGallery({
 
       <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {PERSONAS.map((p, i) => (
-          <PersonaCard key={p.id} persona={p} locked={!ready} onPick={onPick} index={i} />
+          <PersonaCard
+            key={p.id}
+            persona={p}
+            locked={!ready}
+            onPick={handlePick}
+            runs={counts[p.id]}
+            index={i}
+          />
         ))}
       </div>
     </div>

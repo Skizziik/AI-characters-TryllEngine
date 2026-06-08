@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { Lock, MessageCircle } from "lucide-react";
 import type { Persona } from "@/lib/types";
+import { formatCount } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 /** Large portrait card (polybuzz-style). Image fills the card; text sits
@@ -13,11 +14,13 @@ export function PersonaCard({
   persona,
   locked,
   onPick,
+  runs,
   index = 0,
 }: {
   persona: Persona;
   locked: boolean;
   onPick: (p: Persona) => void;
+  runs?: number;
   index?: number;
 }) {
   const [imgOk, setImgOk] = useState(true);
@@ -66,9 +69,17 @@ export function PersonaCard({
 
       {/* content */}
       <div className={cn("relative z-10 p-5", locked && "opacity-60 blur-[1px]")}>
-        <h3 className="text-lg font-semibold leading-tight text-white drop-shadow">
-          {persona.name}
-        </h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-lg font-semibold leading-tight text-white drop-shadow">
+            {persona.name}
+          </h3>
+          {runs != null && (
+            <span className="inline-flex shrink-0 items-center gap-1 text-xs text-white/65">
+              <MessageCircle className="size-3.5" />
+              {formatCount(runs)}
+            </span>
+          )}
+        </div>
         <p className="mt-1 line-clamp-2 text-sm text-white/70">{persona.tagline}</p>
         <div className="mt-3 flex flex-wrap gap-1.5">
           {persona.tags.map((t) => (
