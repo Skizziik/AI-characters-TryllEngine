@@ -1,0 +1,190 @@
+"use client";
+
+import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import {
+  ArrowRight,
+  ArrowLeft,
+  MessageSquareHeart,
+  Cpu,
+  ShieldCheck,
+  Download,
+  Users,
+  Sparkles,
+} from "lucide-react";
+import type { StackState } from "@/lib/types";
+import { ActivatePanel } from "./ActivatePanel";
+import { CollageBackground } from "./CollageBackground";
+import { cn } from "@/lib/cn";
+
+interface Props {
+  state: StackState;
+  onActivate: () => void;
+  onEnter: () => void;
+}
+
+const HOW = [
+  { icon: Download, title: "Activate once", body: "Install a tiny helper and download the model. Takes a couple of minutes." },
+  { icon: Users, title: "Pick a character", body: "Browse a cast of personalities — each with its own voice and vibe." },
+  { icon: MessageSquareHeart, title: "Just talk", body: "Chat freely. Replies are generated live, right on your machine." },
+];
+
+export function Onboarding({ state, onActivate, onEnter }: Props) {
+  const [step, setStep] = useState(0);
+  const last = 3;
+  const ready = state.phase === "ready";
+
+  return (
+    <section className="relative min-h-dvh w-full overflow-hidden">
+      <CollageBackground />
+      <div className="relative z-10 mx-auto flex min-h-dvh max-w-3xl flex-col items-center justify-center px-6 py-16">
+      {/* progress dots */}
+      <div className="mb-10 flex items-center gap-2">
+        {Array.from({ length: last + 1 }).map((_, i) => (
+          <span
+            key={i}
+            className={cn(
+              "h-1.5 rounded-full transition-all",
+              i === step ? "w-8 bg-primary" : i < step ? "w-4 bg-primary/50" : "w-4 bg-surface-2",
+            )}
+          />
+        ))}
+      </div>
+
+      <div className="relative w-full">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={step}
+            initial={{ opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -24 }}
+            transition={{ duration: 0.3 }}
+            className="flex flex-col items-center text-center"
+          >
+            {step === 0 && (
+              <>
+                <span className="grid size-14 place-items-center rounded-2xl gradient-primary text-white ring-glow">
+                  <Sparkles className="size-7" />
+                </span>
+                <h2 className="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl">
+                  Welcome to <span className="gradient-text">Tryll Engine</span>
+                </h2>
+                <p className="mt-3 max-w-md text-muted">
+                  A place to talk with AI characters that live entirely on your
+                  own computer. Let&apos;s get you set up — it only takes a minute.
+                </p>
+              </>
+            )}
+
+            {step === 1 && (
+              <>
+                <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+                  How it works
+                </h2>
+                <div className="mt-8 grid w-full gap-4 sm:grid-cols-3">
+                  {HOW.map((h, i) => (
+                    <motion.div
+                      key={h.title}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1 + i * 0.08 }}
+                      className="rounded-2xl glass p-5 text-left"
+                    >
+                      <h.icon className="size-6 text-primary" />
+                      <p className="mt-3 font-medium">{h.title}</p>
+                      <p className="mt-1 text-sm text-muted">{h.body}</p>
+                    </motion.div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {step === 2 && (
+              <>
+                <span className="grid size-14 place-items-center rounded-2xl bg-success/15 text-success">
+                  <ShieldCheck className="size-7" />
+                </span>
+                <h2 className="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl">
+                  Yours, and only yours
+                </h2>
+                <p className="mt-3 max-w-md text-muted">
+                  After setup, everything runs offline on your GPU. Your
+                  conversations never touch a server — there&apos;s nothing to
+                  leak, sell, or rate-limit.
+                </p>
+                <div className="mt-6 flex flex-wrap justify-center gap-3 text-sm">
+                  <Badge icon={Cpu} text="Local inference" />
+                  <Badge icon={ShieldCheck} text="No data leaves your device" />
+                  <Badge icon={Sparkles} text="Unlimited chats" />
+                </div>
+              </>
+            )}
+
+            {step === 3 && (
+              <>
+                <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+                  {ready ? "You're all set" : "Let's activate your stack"}
+                </h2>
+                <p className="mt-3 max-w-md text-muted">
+                  {ready
+                    ? "Your local AI is running. Time to meet the characters."
+                    : "Download the engine and model. You can watch the progress right here."}
+                </p>
+                <div className="mt-8 flex w-full justify-center">
+                  <ActivatePanel state={state} onActivate={onActivate} />
+                </div>
+              </>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {/* nav */}
+      <div className="mt-12 flex items-center gap-3">
+        {step > 0 && (
+          <button
+            onClick={() => setStep((s) => Math.max(0, s - 1))}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border-soft px-5 py-2.5 text-sm text-muted transition hover:text-fg"
+          >
+            <ArrowLeft className="size-4" />
+            Back
+          </button>
+        )}
+
+        {step < last ? (
+          <button
+            onClick={() => setStep((s) => Math.min(last, s + 1))}
+            className="group inline-flex items-center gap-2 rounded-full gradient-primary px-7 py-2.5 font-medium text-white ring-glow transition hover:brightness-110 active:scale-[0.98]"
+          >
+            Continue
+            <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+          </button>
+        ) : (
+          <button
+            onClick={onEnter}
+            disabled={!ready}
+            className={cn(
+              "group inline-flex items-center gap-2 rounded-full px-7 py-2.5 font-medium transition",
+              ready
+                ? "gradient-primary text-white ring-glow hover:brightness-110 active:scale-[0.98]"
+                : "cursor-not-allowed border border-border-soft text-muted-2",
+            )}
+          >
+            Meet the characters
+            <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+          </button>
+        )}
+      </div>
+      </div>
+    </section>
+  );
+}
+
+function Badge({ icon: Icon, text }: { icon: typeof Cpu; text: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-border-soft bg-surface/50 px-3.5 py-1.5 text-muted backdrop-blur">
+      <Icon className="size-4 text-primary" />
+      {text}
+    </span>
+  );
+}

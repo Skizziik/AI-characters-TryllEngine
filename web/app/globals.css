@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+/* ── Tryll — design tokens ─────────────────────────────────────────────
+   Black + bordeaux. Restrained, cinematic. Per-persona colors are the
+   only "loud" accents; the chrome stays dark and warm.                  */
+@theme inline {
+  --color-bg: #0a0507;
+  --color-bg-2: #100a0c;
+  --color-surface: #170d10;
+  --color-surface-2: #21141a;
+  --color-border: #3a2128;
+  --color-border-soft: #281820;
+  --color-fg: #f3ecee;
+  --color-muted: #ad999f;
+  --color-muted-2: #7a656b;
+
+  /* bordeaux primary */
+  --color-primary: #a01b2e;
+  --color-primary-600: #7c1322;
+  --color-primary-700: #5c0e1a;
+  --color-primary-fg: #ffffff;
+
+  /* small accents */
+  --color-accent: #c8324a;
+  --color-gold: #d9a566;
+  --color-cyan: #5fb8c9;
+  --color-success: #4ec38a;
+  --color-danger: #e2566b;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --radius-xl2: 1.25rem;
+
+  --shadow-glow: 0 0 0 1px rgba(160, 27, 46, 0.35),
+    0 10px 50px -12px rgba(160, 27, 46, 0.5);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
+
+body {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  position: relative;
+  /* deep bordeaux glow, low and warm — not a rainbow */
+  background-image:
+    radial-gradient(70rem 50rem at 50% -20%, rgba(124, 19, 34, 0.32), transparent 60%),
+    radial-gradient(40rem 40rem at 100% 0%, rgba(92, 14, 26, 0.28), transparent 55%),
+    radial-gradient(50rem 40rem at 0% 110%, rgba(160, 27, 46, 0.14), transparent 60%);
+  background-attachment: fixed;
+}
+
+/* film vignette + faint grain to kill the flat "template" look */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(120% 120% at 50% 0%, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+  mix-blend-mode: multiply;
+}
+
+/* ── utilities ─────────────────────────────────────────────────────── */
+@layer utilities {
+  .glass {
+    background: color-mix(in oklab, var(--color-surface) 78%, transparent);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--color-border-soft);
+  }
+  .gradient-text {
+    background: linear-gradient(100deg, #f0c9cf 0%, var(--color-primary) 45%, var(--color-accent) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .gradient-primary {
+    background: linear-gradient(135deg, var(--color-primary-600), var(--color-accent));
+  }
+  .ring-glow {
+    box-shadow: var(--shadow-glow);
+  }
+  .hairline {
+    border: 1px solid var(--color-border-soft);
+  }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+/* keep app content above the vignette layer */
+body > * { position: relative; z-index: 1; }
+
+/* thin scrollbar */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--color-surface-2);
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--color-border); background-clip: content-box; }
+
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+
+/* collage columns — duplicated content scrolls by exactly one set (-50%) */
+@keyframes collage-up { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+@keyframes collage-down { from { transform: translateY(-50%); } to { transform: translateY(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-collage-col] { animation: none !important; }
+}
