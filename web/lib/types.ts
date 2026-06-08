@@ -15,6 +15,8 @@ export interface Persona {
   tags: string[];
   /** the in-character description folded into the system prompt */
   persona: string;
+  /** a few-sentence history that personalises the conversation */
+  backstory: string;
   /** the character's opening line in a fresh chat */
   greeting: string;
   /** optional override of the whole system block (flagship characters) */

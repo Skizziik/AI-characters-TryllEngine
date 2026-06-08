@@ -30,6 +30,8 @@ export interface StackClient {
     onToken: (t: string) => void,
     signal?: AbortSignal,
   ): Promise<void>;
+  /** tear the agent down — bridge stops the server when the last agent closes */
+  closeAgent(agentId: string): Promise<void>;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -152,6 +154,11 @@ export class MockStackClient implements StackClient {
       await sleep(45 + (hash(w) % 40));
     }
   }
+
+  async closeAgent(): Promise<void> {
+    // The real bridge stops tryll_server when the last agent closes.
+    await sleep(50);
+  }
 }
 
 /* ── Real bridge implementation (used once Tryll Desktop is installed) ── */
@@ -235,6 +242,14 @@ export class HttpStackClient implements StackClient {
         const j = JSON.parse(line) as { token?: string; done?: boolean };
         if (j.token) onToken(j.token);
       }
+    }
+  }
+
+  async closeAgent(agentId: string): Promise<void> {
+    try {
+      await fetch(`${this.base}/persona/${encodeURIComponent(agentId)}`, { method: "DELETE" });
+    } catch {
+      /* ignore — bridge may already be down */
     }
   }
 }

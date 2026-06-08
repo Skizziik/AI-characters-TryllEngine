@@ -17,10 +17,12 @@ const uid = () =>
 export function ChatView({
   persona,
   client,
+  language,
   onBack,
 }: {
   persona: Persona;
   client: StackClient;
+  language?: string;
   onBack: () => void;
 }) {
   const [agentId, setAgentId] = useState<string | null>(null);
@@ -36,7 +38,7 @@ export function ChatView({
     setMessages([]);
     setAgentId(null);
     (async () => {
-      const id = await client.createPersona(persona, buildSystemPrompt(persona));
+      const id = await client.createPersona(persona, buildSystemPrompt(persona, language));
       if (!alive) return;
       setAgentId(id);
       setMessages([
@@ -47,7 +49,15 @@ export function ChatView({
       alive = false;
       abortRef.current?.abort();
     };
-  }, [persona, client]);
+  }, [persona, client, language]);
+
+  // Close the agent (and let the bridge stop the server) when leaving the chat
+  // or switching persona/language.
+  useEffect(() => {
+    return () => {
+      if (agentId) void client.closeAgent(agentId);
+    };
+  }, [agentId, client]);
 
   // autoscroll
   useEffect(() => {

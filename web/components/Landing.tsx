@@ -12,7 +12,7 @@ const FEATURES = [
   { icon: Sparkles, label: "No subscription" },
 ];
 
-export function Landing({ onStart }: { onStart: () => void }) {
+export function Landing({ onStart, ready }: { onStart: () => void; ready?: boolean }) {
   return (
     <section className="relative min-h-dvh w-full overflow-hidden">
       <CollageBackground />
@@ -58,7 +58,7 @@ export function Landing({ onStart }: { onStart: () => void }) {
           onClick={onStart}
           className="group inline-flex items-center gap-2 rounded-full gradient-primary px-7 py-3.5 font-medium text-white ring-glow transition hover:brightness-110 active:scale-[0.98]"
         >
-          Get started
+          {ready ? "Open characters" : "Get started"}
           <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
         </button>
         <div className="flex items-center gap-5 text-sm text-muted">

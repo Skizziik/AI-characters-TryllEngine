@@ -21,6 +21,7 @@ interface Props {
   state: StackState;
   onActivate: () => void;
   onEnter: () => void;
+  onSkip: () => void;
 }
 
 const HOW = [
@@ -29,7 +30,7 @@ const HOW = [
   { icon: MessageSquareHeart, title: "Just talk", body: "Chat freely. Replies are generated live, right on your machine." },
 ];
 
-export function Onboarding({ state, onActivate, onEnter }: Props) {
+export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
   const [step, setStep] = useState(0);
   const last = 3;
   const ready = state.phase === "ready";
@@ -37,6 +38,14 @@ export function Onboarding({ state, onActivate, onEnter }: Props) {
   return (
     <section className="relative min-h-dvh w-full overflow-hidden">
       <CollageBackground />
+      {ready && (
+        <button
+          onClick={onSkip}
+          className="absolute right-6 top-6 z-20 inline-flex items-center gap-1 rounded-full border border-border-soft bg-surface/60 px-4 py-2 text-sm text-muted backdrop-blur transition hover:text-fg"
+        >
+          Skip — I&apos;m set up
+        </button>
+      )}
       <div className="relative z-10 mx-auto flex min-h-dvh max-w-3xl flex-col items-center justify-center px-6 py-16">
       {/* progress dots */}
       <div className="mb-10 flex items-center gap-2">
