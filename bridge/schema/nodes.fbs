@@ -1,0 +1,377 @@
+// Tryll node parameter types — FlatBuffers schema.
+// Single source of truth for typed parameters, editor metadata, and codegen.
+//
+// Custom attributes:
+//   structural    — field cannot be changed after construction; mutations return
+//                   ParamNotMutable (3006) with a precise field-name diagnostic.
+//   multiline     — string field should render in a multi-line text editor.
+//   range_min     — lower numeric bound, inclusive (string-quoted per FB grammar).
+//   range_max     — upper numeric bound, inclusive (string-quoted per FB grammar).
+//   on_change     — server-only: C++ method name on the concrete node class invoked
+//                   when this field changes during mutation.  Consumed only by the
+//                   server-side Apply() codegen; ignored by all client emitters.
+//                   Compile-time link: a misspelled name produces a build break.
+//   exit          — declares the field is a workflow-graph exit, naming the
+//                   target node this exit routes to.  Field name MUST end with
+//                   "_exit"; the prefix is the exit name on the wire (e.g.
+//                   `triggered_exit` → exit "triggered").  Empty string = END
+//                   (no route; agent finishes the turn after this node).
+//                   Codegen emits a TryllExit attribute (Unity) and
+//                   GetOptions=GetExitTargetOptions UPROPERTY meta (Unreal) so
+//                   editor inspectors can render a dropdown of valid target
+//                   node names.  Always combined with (structural): wiring is
+//                   fixed at agent creation, not mutable at runtime.
+
+include "common_enums.fbs";
+
+attribute "structural";
+attribute "multiline";
+attribute "range_min";
+attribute "range_max";
+attribute "on_change";
+attribute "exit";
+attribute "file_picker";
+
+namespace Tryll.NodeParams;
+
+// ── Tool definition (moved here from messages.fbs so ToolCallParams can own tools) ──
+
+/// One named parameter in a tool's schema (used in SLM prompt construction).
+table ToolParamDefinition {
+	/// Parameter name exposed to the SLM in the tool schema.
+	name:        string;
+	/// JSON-schema-style type string (e.g. "string", "number").
+	type:        string;
+	/// Human-readable parameter description for the SLM prompt.
+	description: string;
+}
+
+/// A callable tool definition used for prompt construction by ToolCallNode.
+/// The server does not execute tools; these are schema-only for SLM prompting.
+table ToolDefinition {
+	/// Tool name the SLM must use when calling this tool.
+	name:        string;
+	/// What the tool does; included in the SLM tool-call prompt.
+	description: string;
+	/// Named parameters accepted by this tool.
+	parameters:  [ToolParamDefinition];
+}
+
+// ── Shared sub-tables ────────────────────────────────────────────────────────
+
+/// Sparse sampling override block.
+/// Null on any field means "inherit the selected model's default".
+/// No per-field (on_change) attributes: the outer sub-table field carries one
+/// callback that re-resolves the whole block and commits derived state.
+table SamplingOverrides {
+	/// 0.0 = fully deterministic, 2.0 = highly random.  Null = inherit.
+	temperature:       float = null (range_min: "0", range_max: "2");
+	/// Nucleus sampling cutoff.  Null = inherit model default.
+	top_p:             float = null (range_min: "0", range_max: "1");
+	/// Top-k sampling limit.  Null = inherit model default.
+	top_k:             int   = null (range_min: "0");
+	/// Minimum token probability (min-p sampling).  Null = inherit model default.
+	min_p:             float = null (range_min: "0", range_max: "1");
+	/// Maximum new tokens to generate.  Null = inherit model default.
+	max_tokens:        int   = null (range_min: "1");
+	/// RNG seed for reproducible sampling.  Null = inherit model default.
+	seed:              int   = null;
+	/// Penalise repeated tokens (llama.cpp repeat_penalty).  Null = inherit.
+	repeat_penalty:    float = null (range_min: "0");
+	/// OpenAI-style presence penalty.  Null = inherit model default.
+	presence_penalty:  float = null;
+	/// OpenAI-style frequency penalty.  Null = inherit model default.
+	frequency_penalty: float = null;
+}
+
+// ── Per-node typed parameter tables ─────────────────────────────────────────
+
+/// LLM-driven text generation node.
+/// Renders a Mustache template, runs sampling, produces a streamed AnswerText.
+table GenerateParams {
+	/// Model catalog name.  Empty = use the agent's default_model_name.
+	model_name:    string (structural);
+
+	/// Prepended before the user turn during projection.
+	system_prompt: string (multiline, on_change: "OnPromptOrTemplateChanged");
+
+	/// Mustache template applied to the user-area message at projection time.
+	template:      string (multiline, on_change: "OnPromptOrTemplateChanged");
+
+	/// Where the rendered template body is placed in the projected message stream.
+	placement:     Tryll.Placement = InPlaceOfUser (on_change: "OnPromptOrTemplateChanged");
+	/// When true, emit answer text as streaming deltas; otherwise one final chunk.
+	stream:        bool = false;
+
+	/// Sparse sampling overrides applied on top of the model-catalog defaults.
+	/// Sub-table change fires OnSamplingChanged, which re-resolves overrides
+	/// against the cached model-default sampling.
+	sampling:      SamplingOverrides (on_change: "OnSamplingChanged");
+
+	/// Default exit target — routes here after generation completes.
+	/// Empty string = END (turn finishes).
+	default_exit:  string (exit, structural);
+}
+
+/// Guardrail node backed by session string storage.
+/// Blocks turns whose human message matches a pattern in the storage.
+/// Resolution priority (factory): named string_storage → inline_strings →
+/// server-wide default (default-guardrail-patterns.txt from server-config).
+table HumanMessageGuardrailParams {
+	/// Named session string storage.  Mutable — rebinds the underlying storage.
+	string_storage: string (on_change: "OnStringStorageChanged", file_picker);
+	/// Inline pattern list.  Structural because it materialises the underlying
+	/// StringStorage at construction; rebinding goes through string_storage.
+	inline_strings: [string] (structural);
+
+	/// Exit taken when the human message matches a guardrail pattern.
+	/// Empty string = END.
+	triggered_exit:     string (exit, structural);
+
+	/// Exit taken when no pattern matches.  Empty string = END.
+	not_triggered_exit: string (exit, structural);
+}
+
+/// Canned-response node backed by session string storage.
+/// Resolution priority (factory): named string_storage → inline_strings →
+/// server-wide default (default-canned-responses.txt from server-config).
+table CannedResponseParams {
+	/// Named session string storage.  Mutable — rebinds the underlying storage.
+	string_storage:     string (on_change: "OnStringStorageChanged", file_picker);
+	/// Inline response list.  Structural because it materialises the underlying
+	/// StringStorage at construction.
+	inline_strings:     [string] (structural);
+	/// How the next canned response is chosen from the storage list.
+	selection_strategy: Tryll.CannedResponseSelectionStrategy = RoundRobin;
+
+	/// Default exit target after emitting a canned response.
+	/// Empty string = END.
+	default_exit:       string (exit, structural);
+}
+
+/// LLM-driven tool-call node.
+/// Constructs a tool-call prompt, runs sampling, parses the result.
+table ToolCallParams {
+	/// Model catalog name.  Empty = use the agent's default_model_name.
+	model_name:          string (structural);
+
+	/// Prepended before the user turn during projection.
+	system_prompt:       string (multiline, on_change: "OnPromptChanged");
+
+	/// Tool-call dialect used for both prompt construction and output parsing.
+	/// Structural because the format config is baked into the projection strategy.
+	tool_call_format:    string (structural);
+
+	/// Callable tool definitions.  Structural because the tool-call prompt schema
+	/// and parser contract are materialised at construction.
+	tools:               [ToolDefinition] (structural);
+
+	/// When no tool call is detected in the response, generate a plain text reply.
+	generate_on_no_tool: bool = false;
+
+	/// When true, emit an OnNodeEvent("tool_call", …) for each tool call parsed.
+	notify_client:       bool = false;
+
+	/// Sparse sampling overrides.
+	sampling:            SamplingOverrides (on_change: "OnSamplingChanged");
+
+	/// Exit taken when one or more tool calls are parsed from the response.
+	/// Empty string = END.
+	tool_called_exit:    string (exit, structural);
+
+	/// Exit taken when no tool call is parsed (or when generate_on_no_tool
+	/// produced a plain text reply).  Empty string = END.
+	no_tool_called_exit: string (exit, structural);
+}
+
+/// RAG retrieval node.  Embeds the HumanMessage, searches an embedded storage,
+/// and attaches a KnowledgeComponent to the current interaction.
+table RetrieveParams {
+	/// Named embedded string storage (EmbeddedStringStorageManager).  Structural
+	/// because the storage is resolved and referenced at construction.
+	embedded_string_storage: string (structural, file_picker);
+
+	/// Number of chunks to retrieve.
+	top_k:                   int   = 2 (range_min: "1", range_max: "1000");
+
+	/// Maximum cosine distance; results above this threshold are dropped.
+	/// Zero disables filtering (no threshold).
+	threshold:               float = 0 (range_min: "0", range_max: "1");
+
+	/// Label attached to the KnowledgeComponent; defaults to node name.
+	source:                  string;
+
+	/// JSON filter compiled against the storage's metadata schema.
+	/// Empty string = no filter.  Mutable — recompiles the filter on change.
+	filter:                  string (on_change: "OnFilterChanged");
+
+	/// Exit taken when retrieval returned at least one chunk above threshold.
+	/// Empty string = END.
+	found_exit:              string (exit, structural);
+
+	/// Exit taken when retrieval produced no results.  Empty string = END.
+	not_found_exit:          string (exit, structural);
+}
+
+/// Plain instruction node.  Attaches an InstructionComponent to the current
+/// interaction so downstream Mustache templates can reference it.
+table InstructionParams {
+	/// Name used as the Mustache variable suffix (instruction_<name>).
+	instruction_name: string;
+
+	/// The instruction text.  Mutable.
+	instruction:      string (multiline);
+
+	/// Default exit target after attaching the instruction.
+	/// Empty string = END.
+	default_exit:     string (exit, structural);
+}
+
+/// Intent classification node (embedding-based, top-1 nearest-neighbour).
+/// Searches a labelled embedded storage and attaches an IntentionComponent.
+table ClassifyIntentParams {
+	/// Named embedded string storage.  Structural.
+	embedded_string_storage: string (structural, file_picker);
+
+	/// Storage metadata field whose string value becomes the intent label.
+	metadata_field:          string;
+
+	/// Maximum cosine distance; hits above this are treated as not_found.
+	threshold:               float = 0 (range_min: "0", range_max: "1");
+
+	/// JSON filter applied during search.  Empty = no filter.  Mutable.
+	filter:                  string (on_change: "OnFilterChanged");
+
+	/// When true, fire OnNodeEvent("intent_classified", …) on the found path.
+	notify_client:           bool = false;
+
+	/// Hits to fetch for diagnostic purposes (routing always uses top-1).
+	diagnostic_topk:         int  = 1 (range_min: "1", range_max: "64");
+
+	/// Exit taken when classification produced a label above threshold.
+	/// Empty string = END.
+	found_exit:              string (exit, structural);
+
+	/// Exit taken when no label cleared the threshold.  Empty string = END.
+	not_found_exit:          string (exit, structural);
+}
+
+/// Intent classification node (LLM first-token logprob over letter candidates).
+/// Scores labels via a dedicated LLM and attaches an IntentionComponent.
+table ClassifyIntentLLMParams {
+	/// Model catalog name.  Structural because the token-ID mapping is built
+	/// from the model's vocabulary at construction.
+	model_name:       string (structural);
+
+	/// Comma-separated intent IDs (e.g. "greet,farewell,other").  Structural
+	/// because label-to-token-ID mapping is built at construction.
+	intents_ids:      string (structural);
+
+	/// Comma-separated intent prompt labels / descriptions.  Structural because
+	/// the projection scaffolding and label-token mapping are built at construction.
+	intents_prompt:   string (structural);
+
+	/// Prepended before the user turn during classification projection.
+	system_prompt:    string (multiline, on_change: "OnPromptChanged");
+
+	/// Number of dialog history turns included in the classification context.
+	history_turns:    int   = 4 (range_min: "0", range_max: "64", on_change: "OnHistoryTurnsChanged");
+
+	/// First-token probability threshold for the winning label.
+	threshold:        float = 0.5 (range_min: "0", range_max: "1");
+
+	/// Minimum margin between top and second label probabilities.
+	margin:           float = 0.0 (range_min: "0", range_max: "1");
+
+	/// When true, fire OnNodeEvent("intent_classified", …) on the found path.
+	notify_client:    bool = false;
+
+	/// Intent ID returned when no label clears the threshold/margin.
+	not_found_intent: string;
+
+	/// Exit taken when classification produced a label above threshold/margin.
+	/// Empty string = END.
+	found_exit:       string (exit, structural);
+
+	/// Exit taken when no label cleared the threshold/margin.  Empty string = END.
+	not_found_exit:   string (exit, structural);
+}
+
+/// Maps an intent label to an instruction text from a Map-kind string storage.
+/// Resolution priority (factory): named string_storage → inline_keys + inline_strings
+/// (Map-kind in-memory storage built from the equal-length pair).
+table IntentToInstructionParams {
+	/// Named session Map-kind string storage.  Mutable — rebinds the storage.
+	string_storage:   string (on_change: "OnStringStorageChanged", file_picker);
+
+	/// Inline map keys (equal-length with inline_strings).  Structural because
+	/// they materialise the in-memory Map storage at construction.
+	inline_keys:      [string] (structural);
+
+	/// Inline map values (equal-length with inline_keys).  Structural.
+	inline_strings:   [string] (structural);
+
+	/// Name used as the Mustache variable suffix (instruction_<instruction_name>)
+	/// on the attached InstructionComponent.
+	instruction_name: string;
+
+	/// Default exit target after mapping an intent to an instruction.
+	/// Empty string = END.
+	default_exit:     string (exit, structural);
+}
+
+/// LLM-driven text generation + streaming TTS synthesis in a single fused node.
+/// Streams LLM tokens, segments them into sentences, synthesizes each sentence
+/// on a dedicated TTS strand, and emits PCM frames via OnTtsAudio callbacks.
+table GenerateAndSpeakParams {
+	/// LLM model catalog name.  Empty = use the agent's default_model_name.
+	model_name:         string (structural);
+
+	/// TTS model catalog name.  Required.
+	tts_model_name:     string (structural);
+
+	/// Prepended before the user turn during projection.
+	system_prompt:      string (multiline, on_change: "OnPromptOrTemplateChanged");
+
+	/// Mustache template applied to the user-area message at projection time.
+	template:           string (multiline, on_change: "OnPromptOrTemplateChanged");
+
+	/// Where the rendered template body is placed in the projected message stream.
+	placement:          Tryll.Placement = InPlaceOfUser (on_change: "OnPromptOrTemplateChanged");
+
+	/// Sparse sampling overrides applied on top of the model-catalog defaults.
+	sampling:           SamplingOverrides (on_change: "OnSamplingChanged");
+
+	/// TTS speaker / voice index for multi-speaker models (default 0).
+	speaker_id:         int   = 0 (range_min: "0");
+
+	/// TTS speech-rate multiplier.  1.0 = native speed.
+	speed:              float = 1.0 (range_min: "0.1", range_max: "3.0");
+
+	/// Minimum characters before a sentence boundary fires.  Lower values reduce
+	/// first-utterance latency at the cost of more, smaller TTS calls.
+	min_sentence_chars: int   = 12 (range_min: "1");
+
+	/// Default exit target — routes here after generation + synthesis complete.
+	/// Empty string = END.
+	default_exit:       string (exit, structural);
+}
+
+// ── Union discriminating all concrete node parameter types ───────────────────
+
+/// Typed parameter union carried by NodeDescription and ChangeAgentParamRequest.
+/// The union discriminator (`params_type()`) replaces the old NodeType enum
+/// for dispatch purposes; a convenience NodeType enum may still be generated
+/// from this union for client-side ergonomics.
+union NodeParams {
+	GenerateParams,
+	HumanMessageGuardrailParams,
+	CannedResponseParams,
+	ToolCallParams,
+	RetrieveParams,
+	InstructionParams,
+	ClassifyIntentParams,
+	ClassifyIntentLLMParams,
+	IntentToInstructionParams,
+	GenerateAndSpeakParams,
+}

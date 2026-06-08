@@ -1,0 +1,25 @@
+// Tryll shared enumerations — included by both nodes.fbs and messages.fbs.
+
+namespace Tryll;
+
+/// Controls where the rendered Mustache body is placed in the projected message
+/// stream relative to the original user turn.
+enum Placement : uint8 {
+	/// Replaces the user turn.
+	InPlaceOfUser      = 0,
+	/// Inserted as role=user before the user turn.
+	BeforeUserAsUser   = 1,
+	/// Inserted as role=system before the user turn.
+	BeforeUserAsSystem = 2,
+	/// Inserted as role=user after the user turn.
+	AfterUserAsUser    = 3,
+	/// Inserted as role=system after the user turn.
+	AfterUserAsSystem  = 4,
+}
+
+/// Selection strategy for CannedResponseNode.
+enum CannedResponseSelectionStrategy : uint8 {
+	Random     = 0,
+	First      = 1,
+	RoundRobin = 2,
+}

@@ -254,5 +254,8 @@ export class HttpStackClient implements StackClient {
   }
 }
 
-/** Singleton client for the app. Swap to HttpStackClient when wiring the bridge. */
-export const stackClient: StackClient = new MockStackClient();
+/** Singleton client for the app.
+ *  Default: the real localhost bridge (HttpStackClient). Set
+ *  NEXT_PUBLIC_STACK=mock to demo the flow without a local stack. */
+export const stackClient: StackClient =
+  process.env.NEXT_PUBLIC_STACK === "mock" ? new MockStackClient() : new HttpStackClient();

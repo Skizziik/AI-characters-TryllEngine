@@ -1,0 +1,548 @@
+// Tryll wire protocol — FlatBuffers schema.
+// Namespace: Tryll (C++ and generated code).
+
+include "nodes.fbs";
+include "common_enums.fbs";
+
+namespace Tryll;
+
+// ── Code-generation attributes ────────────────────────────────────────────────
+
+/// codec:"manual" — codec is hand-written; the codegen tool skips Build.../decode
+/// generation for this table.  Annotate tables whose encoding requires logic the
+/// templates cannot express (nested union dispatch, raw PCM reinterpret, etc.).
+attribute "codec";
+
+/// needs_raw_payload — the server handler for this table also receives the raw
+/// FlatBuffers frame bytes, because the FB object goes out of scope before a
+/// deferred re-parse path runs.  Consumed by the X-macro dispatch generator to
+/// emit TRYLL_MSG_REQ_WITH_RAW instead of TRYLL_MSG_REQ.
+attribute "needs_raw_payload";
+
+// ── Enumerations ──────────────────────────────────────────────────────────────
+
+/// Outcome of a workflow turn, sent in TurnComplete.
+enum TurnStatus : uint8 {
+	Success   = 0,
+	Error     = 1,
+	Cancelled = 2,
+}
+
+/// Inference engine the session should use for model loading.
+/// Must stay in sync with Tryll::Workflow::InferenceEngine (same ordinal values).
+enum InferenceEngine : uint8 {
+	Mock        = 0,
+	LlamaCpp    = 1,
+	OnnxGenAI   = 2,
+	WindowsML   = 3,
+	OpenVino    = 4,
+	TensorRtLlm = 5,
+	SherpaOnnx  = 6,
+	Supertonic  = 7,
+}
+
+/// Storage kind for a StringStorage.  Must stay in sync with
+/// Tryll::Workflow::StringStorageKind (same ordinal values).
+/// List=0: ordered sequence of plain strings (no keys).
+/// Map=1: key→value pairs with unique keys.
+/// Multimap=2: key→value pairs where duplicate keys are allowed.
+enum StringStorageKind : uint8 { List = 0, Map = 1, Multimap = 2 }
+
+/// Classifies a transcript update pushed by the server.
+/// SpeechStart=0 (VAD rising edge), Partial=1 (revisable hypothesis),
+/// SegmentFinal=2 (engine-committed chunk; utterance still open),
+/// UtteranceFinal=3 (last update for this Begin/End cycle).
+/// Must stay in sync with Tryll::Workflow::TranscriptUpdateKind and
+/// Tryll::Client::TranscriptUpdateKind (same ordinal values).
+enum TranscriptUpdateKind : uint8 {
+	SpeechStart    = 0,
+	Partial        = 1,
+	SegmentFinal   = 2,
+	UtteranceFinal = 3,
+}
+
+// ── Graph description (client → server inside CreateAgentRequest) ─────────────
+
+/// A single key/value pair used in event payloads (NodeEvent.kv_pairs).
+/// Not used for node parameters (those are now typed via NodeParams union).
+table NodeParam {
+	key:   string;
+	value: string;
+}
+
+/// Description of one workflow node.
+/// The `params` union discriminator replaces the old `type` + `[NodeParam]` bag.
+table NodeDescription {
+	name:   string;
+	params: Tryll.NodeParams.NodeParams;
+}
+
+/// Complete graph description: nodes and entry point.
+/// Wiring lives on each node's typed params via fields marked `(exit)` in
+/// nodes.fbs (e.g. GenerateParams.default_exit, RetrieveParams.found_exit).
+/// Empty exit value = END (turn finishes after the node).
+/// Pre-protocol-v2 clients sent a separate `routes: [ExitRoute]` list here;
+/// that field and the ExitRoute table were removed in protocol v2.
+table GraphDescription {
+	nodes:      [NodeDescription];
+	start_node: string;
+}
+
+// ── Messages: server → client (unsolicited) ───────────────────────────────────
+
+/// Sent immediately after a connection is accepted.
+table SessionReady {
+	protocol_version:    uint32;
+	session_id:          uint64;
+	codegen_fingerprint: string;
+}
+
+// ── Messages: client → server (requests) ─────────────────────────────────────
+
+/// Every request carries a client-allocated monotonic request_id.
+
+/// Configure session-level settings (must be sent before CreateAgentRequest).
+/// Sets the inference engine that will be used for all agents on this session.
+table ConfigureSessionRequest {
+	request_id:                   uint64;
+	inference_engine:             InferenceEngine = Mock;
+	/// When true, CreateAgent will automatically download any missing models
+	/// referenced by the graph instead of failing immediately.
+	/// Intended for development and prototyping — not for production use.
+	/// While downloading, DownloadProgress frames are emitted using the
+	/// CreateAgent request_id (informational only; the terminal frame is
+	/// CreateAgentResponse or ErrorResponse, not DownloadComplete).
+	allow_auto_model_downloading: bool = false;
+	/// Identifies the integration (e.g. "test-chat", "qa-and-eval", "<partner-game>").
+	/// Used for telemetry grouping.  Nullable — omitting it is valid for backward
+	/// compatibility; the server will default to "unknown" when telemetry is enabled.
+	game_name:                    string;
+	/// Engine used to load STT (speech-to-text) models on this session.
+	/// Independent of inference_engine; STT/TTS/embedding lookups dispatch on this.
+	stt_engine:                   InferenceEngine = Mock;
+	/// Engine used to load TTS (text-to-speech) models on this session.
+	tts_engine:                   InferenceEngine = Mock;
+	/// Engine used to load embedding models on this session.
+	embedding_engine:             InferenceEngine = Mock;
+	/// Optional per-session storage data folder. Relative storage paths in node
+	/// params (and voice-input hotwords) resolve against this folder. Empty means
+	/// not specified — the server falls back to its configured storage_root (which
+	/// itself defaults to the executable folder).
+	storage_data_folder:          string;
+}
+
+table CreateAgentRequest (codec: "manual", needs_raw_payload) {
+	request_id:            uint64;
+	graph:                 GraphDescription;
+	/// Fallback model name for nodes that do not specify their own "model_name" param.
+	/// If empty, the session has no default and every Generate node must supply its own.
+	default_model_name:    string;
+	/// When true, the server serializes workflow execution data into TurnComplete.debug_info.
+	/// Intended for QA/eval pipelines. Off by default for zero overhead in production.
+	enable_diagnostics:    bool = false;
+}
+
+table SendMessageRequest {
+	request_id: uint64;
+	agent_id:   uint64;
+	text:       string;
+}
+
+table DestroyAgentRequest {
+	request_id: uint64;
+	agent_id:   uint64;
+}
+
+/// Mutate all typed parameters on a named node within an existing agent's workflow.
+/// The agent must not be processing a turn (AgentBusy is returned otherwise).
+/// The server diffs the supplied params against the node's current authored params,
+/// vetoes structural fields (3006), validates values (3007), then applies.
+/// Responds with Ack on success or ErrorResponse on failure.
+table ChangeAgentParamRequest (codec: "manual") {
+	request_id: uint64;
+	agent_id:   uint64;
+	/// Identifies the target node by name (addressing data, kept on envelope).
+	node_name:  string;
+	/// Whole authored typed params for the node.  Must match the node's concrete type.
+	params:     Tryll.NodeParams.NodeParams;
+}
+
+/// Pin a StringStorage into the session storage manager, scoped to this session.
+///
+/// Two content sources — exactly one must be supplied:
+///   Inline: strings[] alone (List) or strings[]+keys[] (Map/Multimap, equal lengths).
+///   File:   file_path — a relative path resolved against the session's storage root
+///           (set via ConfigureSessionRequest.storage_data_folder, or the server's
+///           storage_root from server-config.json).  Extension → kind inference:
+///             .txt  → List  (one value per line; #-prefixed and blank lines skipped)
+///             .json → Map/Multimap  (JSON array of {id, text} objects)
+///
+/// kind=List (default): use strings[]/file_path; keys[] must be empty.
+/// kind=Map/Multimap:   use strings[]+keys[] or a *.json file_path.
+///
+/// The `name` acts as the session-scoped identifier.  A file-backed registration
+/// Pins the loaded storage against eviction; an inline registration registers it as a
+/// virtual name.  DestroyStringStorageRequest Unpins (or unregisters) it, but agents
+/// that already hold a reference to the storage object keep it alive.
+///
+/// Old clients that omit `kind` default to List and remain fully compatible.
+table CreateStringStorageRequest {
+	request_id: uint64;
+	name:       string;
+	kind:       StringStorageKind = List;
+	strings:    [string];
+	keys:       [string];
+	file_path:  string;
+}
+
+/// Unpin (or unregister) a StringStorage.
+/// For file-backed storages, this demotes the entry from Pinned to OnDemand, making
+/// it eligible for eviction once no node holds a reference to it.  For virtual
+/// (inline) storages, this removes the named entry from the session.
+/// Agents and nodes that already hold a reference to the storage object are unaffected.
+table DestroyStringStorageRequest {
+	request_id: uint64;
+	name:       string;
+}
+
+/// Pin an EmbeddedStringStorage into the session storage manager, scoped to this session.
+/// Two construction paths — exactly one must be supplied:
+///   Path A (config_path set): relative path to a *.json config file, resolved against
+///     the session's storage root (storage_data_folder / storage_root).  The server
+///     loads records + optional pre-built index from the config; the loaded entry is
+///     Pinned so it survives eviction.  The embedding model is taken from the config
+///     file; wire embedding_model is ignored for Path A.
+///   Path B (strings set): build an in-memory index from the inline text list as a
+///     virtual entry registered under `name`.  embedding_model is required.
+///
+/// DestroyEmbeddedStringStorageRequest Unpins (Path A) or unregisters (Path B) the
+/// entry, making it eligible for eviction once no node holds a reference.
+table CreateEmbeddedStringStorageRequest (needs_raw_payload) {
+	request_id:      uint64;
+	name:            string;
+	config_path:     string;   // Path A: session-root-relative path to *.json config
+	strings:         [string]; // Path B: inline text chunks
+	embedding_model: string;   // required for Path B; ignored for Path A (KB config is authoritative)
+}
+
+/// Response to CreateEmbeddedStringStorageRequest.
+table CreateEmbeddedStringStorageResponse {
+	request_id:    uint64;
+	name:          string;
+	record_count:  uint32;
+	embedding_dim: uint32;
+}
+
+/// Unpin (Path A) or unregister (Path B) an EmbeddedStringStorage.
+/// For file-backed (Path A) storages, this demotes the cached entry from Pinned to
+/// OnDemand; eviction occurs once no node holds a reference to it.
+/// For virtual (Path B) inline storages, this removes the named entry.
+/// Nodes and agents that already hold a reference to the storage object are unaffected.
+table DestroyEmbeddedStringStorageRequest {
+	request_id: uint64;
+	name:       string;
+}
+
+// ── Messages: server → client (responses) ────────────────────────────────────
+
+/// All responses echo the request_id from the originating request.
+
+table ConfigureSessionResponse {
+	request_id: uint64;
+}
+
+table CreateAgentResponse {
+	request_id: uint64;
+	agent_id:   uint64;
+}
+
+/// Streaming answer chunk.  Terminal when is_final == true.
+table AnswerText {
+	request_id: uint64;
+	agent_id:   uint64;
+	text:       string;
+	is_delta:   bool;
+	is_final:   bool;
+}
+
+/// Terminal message for a SendMessageRequest.
+table TurnComplete {
+	request_id:       uint64;
+	agent_id:         uint64;
+	status:           TurnStatus;
+	/// JSON-encoded workflow execution trace. Populated only when enable_diagnostics
+	/// was set on the CreateAgentRequest. Empty string otherwise.
+	debug_info:       string;
+	/// Total tokens sampled across all generation nodes in this turn (prompt tokens excluded).
+	tokens_generated: uint32;
+}
+
+/// Protocol or application error.  Always the terminal message for a request.
+/// agent_id (index 3) carries the owning agent when the error is agent-scoped
+/// (e.g. ChangeAgentParam); zero for session-level errors.
+table ErrorResponse {
+	request_id: uint64;
+	code:       uint32;
+	message:    string;
+	agent_id:   uint64;
+}
+
+/// Confirms a request that has no dedicated response table (DestroyAgent,
+/// ChangeAgentParam, UnloadModel, Destroy*Storage, VoiceInput control ops, …).
+/// agent_id (index 1) carries the owning agent for agent-scoped acks
+/// (e.g. ChangeAgentParam); zero for non-agent-scoped acks.
+table Ack {
+	request_id: uint64;
+	agent_id:   uint64;
+}
+
+/// Unsolicited generic event fired by a workflow node when its notify_client
+/// flag is set.  Fire-and-forget — no response expected.  `event_type` is the
+/// per-node event discriminator (e.g. "tool_call", "intent_classified"); the
+/// payload travels as an ordered list of string key/value pairs in `kv_pairs`.
+/// Clients dispatch typed callbacks when an event_type is recognised and a
+/// matching subscription exists; otherwise the generic on-node-event callback
+/// receives the raw kv pairs.
+table NodeEvent (codec: "manual") {
+	request_id: uint64;
+	agent_id:   uint64;
+	node_name:  string;
+	event_type: string;
+	kv_pairs:   [NodeParam];
+}
+
+/// Response to CreateStringStorageRequest.
+table CreateStringStorageResponse {
+	request_id: uint64;
+	name:       string;
+}
+
+// ── Model management ─────────────────────────────────────────────────────────
+
+/// Status of a model as reported by the server.
+enum ModelStatus : uint8 {
+	/// Known in catalog but not on disk and not being downloaded.
+	Absent      = 0,
+	/// User-provided path (models.json); file on disk; can be loaded.
+	Local       = 1,
+	/// Transfer in progress.
+	Downloading = 2,
+	/// Currently loaded in memory.
+	Loaded      = 3,
+	/// Present on disk from HuggingFace download (downloads.json); can be loaded.
+	Downloaded  = 4,
+}
+
+/// Summary information for one (model, engine) pair.
+table ModelInfo {
+	name:             string;
+	status:           ModelStatus;
+	huggingface_repo: string;
+	size_bytes:       uint64;
+}
+
+/// Request a list of all known models for the session's inference engine.
+table ListModelsRequest {
+	request_id: uint64;
+}
+
+/// Response to ListModelsRequest.
+table ListModelsResponse (codec: "manual") {
+	request_id: uint64;
+	models:     [ModelInfo];
+}
+
+/// Initiate a download for the named model using the session's inference engine.
+/// The server replies with zero or more DownloadProgress messages followed by
+/// exactly one DownloadComplete.
+table DownloadModelRequest {
+	request_id: uint64;
+	model_name: string;
+}
+
+/// Explicitly load and pin a model into memory using the session's inference engine.
+/// The model remains in memory until the client sends UnloadModelRequest, regardless
+/// of whether any agents are using it.
+/// The server replies with LoadModelResponse on success or ErrorResponse on failure.
+table LoadModelRequest {
+	request_id: uint64;
+	model_name: string;
+}
+
+/// Confirms a LoadModelRequest.
+table LoadModelResponse {
+	request_id: uint64;
+}
+
+/// Unpin a previously pinned model.  If no agents are currently using the model,
+/// it is freed immediately; otherwise it will be freed when the last agent using
+/// it is destroyed.  Responds with Ack.
+table UnloadModelRequest {
+	request_id: uint64;
+	model_name: string;
+}
+
+/// Streaming progress for an active download.
+table DownloadProgress {
+	request_id:      uint64;
+	model_name:      string;
+	bytes_downloaded: uint64;
+	total_bytes:      uint64;
+	percent:          float;
+}
+
+/// Terminal message for a DownloadModelRequest.
+table DownloadComplete {
+	request_id: uint64;
+	model_name: string;
+	success:    bool;
+	error:      string;
+}
+
+// ── VoiceInput messages (28–35) ───────────────────────────────────────────────
+
+/// Declares the audio format the client will send via AudioBuffer.
+/// The server resamples as needed; the client need not match kSttInputFormat.
+/// Named WireAudioFormat to avoid clashing with the client-side Tryll::AudioFormat plain struct.
+table WireAudioFormat {
+	sample_rate:     uint32;
+	channels:        uint16;
+	bits_per_sample: uint16;
+}
+
+// 28 — Create a persistent VoiceInput handle on the server.
+table CreateVoiceInputRequest {
+	request_id:             uint64;
+	model_name:             string;
+	input_format:           WireAudioFormat;
+	vad_threshold:          float  = 0.5;
+	vad_min_silence_ms:     uint32 = 500;
+	vad_speech_pad_ms:      uint32 = 250;
+	// Relative path (resolved against the session storage folder) to a List
+	// StringStorage (.txt) whose entries are hotword phrases.  Empty string
+	// disables hotword biasing.  Unresolvable path produces an error response.
+	// Engines that do not support hotwords (e.g. Whisper, SenseVoice) log a
+	// warning and ignore the field.
+	hotwords_storage_path:  string;
+	// Bonus score added to each matched hotword token during decoding.
+	// Typical range 1.0 (no bias) .. 2.5 (aggressive).  Ignored when
+	// hotwords_storage_path is empty.
+	hotwords_score:         float  = 1.5;
+}
+
+// 29 — Response; carries the voice_input_id used by subsequent frames.
+table CreateVoiceInputResponse {
+	request_id:     uint64;
+	voice_input_id: uint64;
+}
+
+// 30 — Open a new utterance on the handle.  agent_id=0 means transcribe-only.
+table BeginUtteranceRequest {
+	request_id:             uint64;
+	voice_input_id:         uint64;
+	agent_id:               uint64 = 0;
+	auto_finish_on_silence: bool   = true;
+	max_utterance_ms:       uint32 = 60000;
+}
+
+// 31 — Streaming audio frame (no request_id; correlated by voice_input_id).
+table AudioBuffer (codec: "manual") {
+	voice_input_id: uint64;
+	pcm:            [uint8];  // int16 LE at the format declared in CreateVoiceInputRequest
+}
+
+// 32 — Commit the current utterance (push-to-talk release).
+table EndUtteranceRequest {
+	request_id:     uint64;
+	voice_input_id: uint64;
+}
+
+// 33 — Cancel in-flight partial; no transcript, no autosend.
+table CancelUtteranceRequest {
+	request_id:     uint64;
+	voice_input_id: uint64;
+}
+
+// 34 — Server-pushed transcript update (server → client).
+/// Named WireTranscriptUpdate to avoid clashing with the client-side Tryll::TranscriptUpdate plain struct.
+table WireTranscriptUpdate {
+	voice_input_id:    uint64;
+	text:              string;
+	kind:              TranscriptUpdateKind;
+	audio_ms_consumed: uint32;
+}
+
+// 35 — Release the persistent handle.
+table DestroyVoiceInputRequest {
+	request_id:     uint64;
+	voice_input_id: uint64;
+}
+
+// ── TTS audio output messages (36–37) ────────────────────────────────────────
+
+// Sent exactly once before the first TtsAudioFrame of a turn. End-of-stream is
+// signalled by TurnComplete — TtsAudioFrame intentionally has no is_final field.
+
+// codec:"manual" — both frames are hand-encoded: TtsAudioFrame streams int16 PCM
+// via a reinterpret_cast (same pattern as AudioBuffer) to avoid a per-chunk copy,
+// and TtsAudioFormatFrame is kept manual to keep the pair together. They are still
+// classified Streaming (see bfbs.py) so clients get TRYLL_MSG_STREAM dispatch arms.
+table TtsAudioFormatFrame (codec: "manual") {
+    request_id: uint64;
+    agent_id:   uint64;
+    format:     WireAudioFormat;
+}
+
+table TtsAudioFrame (codec: "manual") {
+    request_id: uint64;
+    agent_id:   uint64;
+    pcm:        [uint8];  // int16 LE at the format declared in TtsAudioFormatFrame
+}
+
+// ── Envelope ─────────────────────────────────────────────────────────────────
+
+union MessageBody {
+	SessionReady,
+	ConfigureSessionRequest,
+	ConfigureSessionResponse,
+	CreateAgentRequest,
+	CreateAgentResponse,
+	SendMessageRequest,
+	DestroyAgentRequest,
+	AnswerText,
+	TurnComplete,
+	ErrorResponse,
+	Ack,
+	ListModelsRequest,
+	ListModelsResponse,
+	DownloadModelRequest,
+	DownloadProgress,
+	DownloadComplete,
+	CreateStringStorageRequest,
+	CreateStringStorageResponse,
+	DestroyStringStorageRequest,
+	NodeEvent,
+	LoadModelRequest,
+	LoadModelResponse,
+	UnloadModelRequest,
+	CreateEmbeddedStringStorageRequest,   // 24
+	CreateEmbeddedStringStorageResponse,  // 25
+	DestroyEmbeddedStringStorageRequest,  // 26
+	ChangeAgentParamRequest,              // 27
+	CreateVoiceInputRequest,              // 28
+	CreateVoiceInputResponse,             // 29
+	BeginUtteranceRequest,                // 30
+	AudioBuffer,                          // 31
+	EndUtteranceRequest,                  // 32
+	CancelUtteranceRequest,               // 33
+	WireTranscriptUpdate,                 // 34
+	DestroyVoiceInputRequest,             // 35
+	TtsAudioFormatFrame,                  // 36
+	TtsAudioFrame,                        // 37
+}
+
+table Message {
+	body: MessageBody;
+}
+
+root_type Message;
