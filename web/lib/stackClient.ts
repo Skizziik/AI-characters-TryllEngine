@@ -292,14 +292,18 @@ export class HttpStackClient implements StackClient {
   }
 }
 
-/** Singleton client for the app. Default = WebGPU (web-llm), zero install — the
- *  model runs in the browser tab. NEXT_PUBLIC_STACK=native uses the local
- *  tryll_server bridge; =mock uses the demo client. */
+/** Singleton client for the app. Default = Gemma 4 on transformers.js/WebGPU
+ *  (zero install, runs in the tab, strong multilingual). NEXT_PUBLIC_STACK:
+ *  "webllm" → web-llm/MLC (Llama-3.2-3B etc); "native" → local tryll_server
+ *  bridge; "mock" → demo client. */
 import { WebLlmStackClient } from "./webLlmClient";
+import { TransformersLlmClient } from "./transformersLlmClient";
 
 export const stackClient: StackClient =
   process.env.NEXT_PUBLIC_STACK === "mock"
     ? new MockStackClient()
     : process.env.NEXT_PUBLIC_STACK === "native"
       ? new HttpStackClient()
-      : new WebLlmStackClient();
+      : process.env.NEXT_PUBLIC_STACK === "webllm"
+        ? new WebLlmStackClient()
+        : new TransformersLlmClient();
