@@ -185,7 +185,18 @@ export class WebLlmStackClient implements StackClient {
       conv.messages.push({ role: "assistant", content: full });
     } catch (e) {
       console.error("[webllm] generation failed:", e);
-      const msg = e instanceof Error ? e.message : String(e);
+      // web-llm sometimes throws a plain object (not an Error), which stringifies
+      // to "[object Object]" — dig out a real message.
+      const err = e as { message?: string; detail?: string; name?: string } | undefined;
+      let msg = err?.message || err?.detail || "";
+      if (!msg) {
+        try {
+          msg = JSON.stringify(e);
+        } catch {
+          msg = String(e);
+        }
+      }
+      if (err?.name && !msg.includes(err.name)) msg = `${err.name}: ${msg}`;
       // Surface the real reason instead of an empty bubble.
       if (!full) onToken(`⚠️ Generation failed: ${msg}. Try reloading the page.`);
       // Roll back the unanswered user turn so history stays consistent.
