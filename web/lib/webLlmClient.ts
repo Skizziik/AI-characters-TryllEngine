@@ -6,20 +6,17 @@ import type { StackClient } from "./stackClient";
    via WebGPU. "Activate" streams the model into the browser cache with progress;
    chat is an in-tab streaming completion. No exe, no local server.
 
-   Model: Llama-3.2-3B-Instruct (q4f32) — works reliably on stock web-llm and
-   (per testing) handles this companion's tone better than Qwen2.5-3B. Override
-   with NEXT_PUBLIC_WEBLLM_MODEL.
-
-   NOTE: We tried Gemma 4 E2B for its 140-language fluency, but the only MLC
-   build available (welcoma/gemma-4-E2B-it-q4f16_1-MLC) was compiled from a fork
-   of mlc-llm/TVM — its weights load, but generation aborts the wasm runtime
-   ("ExitStatus: exit(1)") under stock web-llm 0.2.84. Dead end via web-llm; the
-   working route to Gemma 4 is the ONNX build + transformers.js (see gemma-gem).
-   The registration below is kept (commented intent) for if a compatible build
-   appears, but the default stays on a model that actually runs.
+   Model: Qwen3.5-4B (q4f16) — fast on web-llm's compiled WebGPU kernels and
+   strong in Russian. Qwen3.x are "thinking" models, so we disable reasoning
+   (/no_think) and strip any <think> blocks for snappy, clean replies. Override
+   with NEXT_PUBLIC_WEBLLM_MODEL. (Gemma 4 via transformers.js — NEXT_PUBLIC_STACK
+   =gemma — has the best Russian but a much slower engine.)
 */
 
-const MODEL_ID = process.env.NEXT_PUBLIC_WEBLLM_MODEL ?? "Llama-3.2-3B-Instruct-q4f32_1-MLC";
+const MODEL_ID = process.env.NEXT_PUBLIC_WEBLLM_MODEL ?? "Qwen3.5-4B-q4f16_1-MLC";
+
+// Qwen3 / Qwen3.5 reason by default; turn it off for a fast, clean companion.
+const THINKING_MODEL = /qwen3/i.test(MODEL_ID);
 
 type Msg = { role: "system" | "user" | "assistant"; content: string };
 type Conversation = { messages: Msg[] };
@@ -120,11 +117,38 @@ export class WebLlmStackClient implements StackClient {
     this.busy = true;
 
     const conv = this.agents.get(agentId) ?? { messages: [] };
-    conv.messages.push({ role: "user", content: text });
+    // Append /no_think for Qwen3.x so it answers directly (no reasoning pass).
+    conv.messages.push({ role: "user", content: THINKING_MODEL ? `${text} /no_think` : text });
 
     let full = "";
     let reasoning = "";
     let logged = false;
+    let inThink = false; // defensively strip any <think>…</think> that slips through
+    const emit = (delta: string) => {
+      let s = delta;
+      while (s) {
+        if (inThink) {
+          const close = s.indexOf("</think>");
+          if (close === -1) return;
+          s = s.slice(close + 8);
+          inThink = false;
+        } else {
+          const open = s.indexOf("<think>");
+          if (open === -1) {
+            full += s;
+            onToken(s);
+            return;
+          }
+          const before = s.slice(0, open);
+          if (before) {
+            full += before;
+            onToken(before);
+          }
+          s = s.slice(open + 7);
+          inThink = true;
+        }
+      }
+    };
     try {
       const stream = await this.engine.chat.completions.create({
         messages: conv.messages,
@@ -151,10 +175,7 @@ export class WebLlmStackClient implements StackClient {
         }
         if (d?.reasoning_content) reasoning += d.reasoning_content;
         const delta = d?.content ?? "";
-        if (delta) {
-          full += delta;
-          onToken(delta);
-        }
+        if (delta) emit(delta);
         if (choice?.finish_reason) console.log("[webllm] finish_reason:", choice.finish_reason);
       }
       console.log(`[webllm] done: content=${full.length} chars, reasoning=${reasoning.length} chars`);
