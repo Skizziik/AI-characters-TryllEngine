@@ -8,9 +8,10 @@ polybuzz-style experience, but local-first.
 
 ```
 Website (Next.js)  →  web-llm / MLC on WebGPU, in the browser tab
-   onboarding /        Qwen3-8B q4f16 (~5.7 GB VRAM; auto-falls back to
-   persona gallery /   Qwen3-4B on smaller GPUs), thinking disabled
-   chat UI + voice     Whisper STT + Supertonic TTS on CPU (WASM)
+   onboarding /        Qwen3-4B q4f16 (3.4 GB VRAM; 8B via env override,
+   persona gallery /   auto-fallback to 1.7B on tiny GPUs), thinking disabled
+   chat UI + voice     Whisper STT on CPU; Supertonic TTS on WebGPU,
+                       fed after generation so it never fights the LLM
 ```
 
 - **Website** — onboarding, persona gallery, chat UI, hands-free voice calls.

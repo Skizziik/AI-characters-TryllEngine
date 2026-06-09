@@ -387,12 +387,22 @@ async function fetchJSON<T>(url: string): Promise<T> {
 }
 
 async function createSession(ort: OrtNS, url: string): Promise<Session> {
-  // Run TTS on WASM (CPU), NOT WebGPU: the LLM already owns the GPU,
-  // and streaming TTS synthesizes sentences WHILE the model is still generating
-  // — sharing the GPU made both crawl. CPU keeps the GPU free for fast token
-  // generation; voice synthesis runs in parallel on the CPU.
-  const buf = await cachedBytes(url);
-  return await ort.InferenceSession.create(buf, {
+  // WebGPU first: browser WASM is single-threaded without cross-origin
+  // isolation, so CPU synthesis took ~5 s per sentence. The GPU is an order of
+  // magnitude faster, and voice now starts only AFTER the LLM finishes
+  // generating (see ChatView), so the two no longer fight over the GPU.
+  // WASM (CPU) stays as the fallback when WebGPU is unavailable.
+  if (typeof navigator !== "undefined" && "gpu" in navigator) {
+    try {
+      return await ort.InferenceSession.create(await cachedBytes(url), {
+        executionProviders: ["webgpu"],
+        graphOptimizationLevel: "all",
+      });
+    } catch (e) {
+      console.warn(`[tts] webgpu session failed for ${url.split("/").pop()}, falling back to wasm`, e);
+    }
+  }
+  return await ort.InferenceSession.create(await cachedBytes(url), {
     executionProviders: ["wasm"],
     graphOptimizationLevel: "all",
   });

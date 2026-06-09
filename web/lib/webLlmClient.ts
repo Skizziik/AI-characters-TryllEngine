@@ -6,15 +6,16 @@ import type { StackClient } from "./stackClient";
    via WebGPU. "Activate" streams the model into the browser cache with progress;
    chat is an in-tab streaming completion. No exe, no local server.
 
-   Model: Qwen3-8B (q4f16) — the strongest EN+RU model in web-llm's prebuilt
-   list that still fits an 8 GB GPU (5.7 GB VRAM). Reasoning is disabled per
-   turn via Qwen's /no_think soft switch (+ defensive <think> stripping).
-   If the 8B fails to load (smaller GPUs), we fall back to Qwen3-4B (3.4 GB).
-   Override with NEXT_PUBLIC_WEBLLM_MODEL.
+   Model: Qwen3-4B (q4f16) — the best speed/quality EN+RU balance in web-llm's
+   prebuilt list: 3.4 GB VRAM, fast tokens on an 8 GB GPU, decent Russian.
+   Reasoning is disabled per turn via Qwen's /no_think soft switch (+ defensive
+   <think> stripping). NEXT_PUBLIC_WEBLLM_MODEL=Qwen3-8B-q4f16_1-MLC gives the
+   smarter-but-slower 8B (5.7 GB); if the default fails to load (tiny GPUs) we
+   fall back to Qwen3-1.7B.
 */
 
-const MODEL_ID = process.env.NEXT_PUBLIC_WEBLLM_MODEL ?? "Qwen3-8B-q4f16_1-MLC";
-const FALLBACK_MODEL_ID = "Qwen3-4B-q4f16_1-MLC";
+const MODEL_ID = process.env.NEXT_PUBLIC_WEBLLM_MODEL ?? "Qwen3-4B-q4f16_1-MLC";
+const FALLBACK_MODEL_ID = "Qwen3-1.7B-q4f16_1-MLC";
 
 // Qwen3 / Qwen3.5 reason by default; turn it off for a fast, clean companion.
 const isThinkingModel = (id: string) => /qwen3/i.test(id);
@@ -108,9 +109,9 @@ export class WebLlmStackClient implements StackClient {
           onUpdate({ phase: "error", error: `Couldn't load ${MODEL_ID}: ${msg}` });
           throw e;
         }
-        // The 8B needs ~5.7 GB of VRAM — on smaller GPUs the device is lost or
-        // allocation fails. Retry once with the 4B before giving up.
-        onUpdate({ phase: "downloading", progress: 0, detail: "GPU too small for the 8B — loading the lighter model…" });
+        // On GPUs too small for the default the device is lost or allocation
+        // fails. Retry once with the lighter model before giving up.
+        onUpdate({ phase: "downloading", progress: 0, detail: "GPU too small for the default model — loading the lighter one…" });
         try {
           engine = await load(FALLBACK_MODEL_ID);
           this.modelId = FALLBACK_MODEL_ID;

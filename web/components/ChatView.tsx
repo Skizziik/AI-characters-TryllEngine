@@ -267,9 +267,6 @@ export function ChatView({
     const ac = new AbortController();
     abortRef.current = ac;
     let acc = "";
-    // Stream the voice sentence-by-sentence so the first sentence plays while
-    // the rest of the reply is still being generated, instead of waiting for
-    // the whole reply to finish.
     const speech =
       persona && (voiceOn || opts.speakAndWait)
         ? speakStream(getVoice(persona.id), chatLang, { onStart: opts.onSpeakStart })
@@ -281,7 +278,6 @@ export function ChatView({
         (t) => {
           acc += t;
           setMessages((m) => m.map((x) => (x.id === botId ? { ...x, text: acc } : x)));
-          speech?.push(t);
         },
         ac.signal,
       );
@@ -294,8 +290,14 @@ export function ChatView({
       setSending(false);
     }
 
-    // Wait for all audio to finish playing (call mode listens again after this).
-    if (speech) await speech.end();
+    // Feed the reply to TTS only AFTER generation finished: synthesis runs on
+    // the same GPU as the LLM, and doing both at once made both crawl. The
+    // stream still pipelines per sentence — sentence N plays while N+1 is
+    // being synthesized. Waits for all audio (call mode listens again after).
+    if (speech) {
+      if (acc && !ac.signal.aborted) speech.push(acc + " ");
+      await speech.end();
+    }
     return acc;
   }
 

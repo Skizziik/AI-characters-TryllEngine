@@ -1,6 +1,7 @@
-// Voice: Whisper (speech-to-text) + Supertonic (text-to-speech), both running in
-// the browser via transformers.js on the WASM (CPU) backend — so they don't take
-// VRAM from the WebGPU chat model. Models download from HF on first use, cached.
+// Voice: Whisper (speech-to-text) on WASM/CPU + Supertonic (text-to-speech) on
+// WebGPU (with a WASM fallback) — TTS only starts after the LLM finishes its
+// reply, so they never contend for the GPU. Models download from HF on first
+// use, cached.
 
 type AnyPipe = (input: unknown, opts?: Record<string, unknown>) => Promise<{ text?: string; audio?: Float32Array; sampling_rate?: number }>;
 
