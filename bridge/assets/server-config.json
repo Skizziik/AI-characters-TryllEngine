@@ -1,0 +1,24 @@
+{
+  "_note": "Clean Tryll server config for the Tryll product bundle. Overlays the server's data/server-config.json inside server.zip. Telemetry is OFF — nothing about the user leaves their machine (this is the whole privacy promise).",
+  "port": 9100,
+  "thread_count": 4,
+  "models_catalog_path": "models.json",
+  "models_download_dir": ".app-data/models",
+  "logs_dir": ".app-data/logs",
+  "log_mode": "prod",
+  "log_level": "info",
+  "default_canned_responses_path": "default-canned-responses.txt",
+  "default_guardrail_patterns_path": "default-guardrail-patterns.txt",
+  "default_vad_model": "Silero VAD",
+  "telemetry": {
+    "enabled": false,
+    "include_user_content": false,
+    "sinks": []
+  },
+  "monitor": {
+    "enabled": false,
+    "bind": "127.0.0.1",
+    "port": 9101,
+    "allow_remote": false
+  }
+}

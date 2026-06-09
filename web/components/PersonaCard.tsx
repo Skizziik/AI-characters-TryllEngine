@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { motion } from "motion/react";
 import { Lock, MessageCircle } from "lucide-react";
 import type { Persona } from "@/lib/types";
@@ -46,13 +47,14 @@ export function PersonaCard({
         style={{ backgroundImage: `linear-gradient(150deg, ${persona.gradient[0]}, ${persona.gradient[1]})` }}
       />
       {persona.image && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <Image
           src={persona.image}
           alt={persona.name}
+          fill
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           onError={() => setImgOk(false)}
           className={cn(
-            "absolute inset-0 h-full w-full object-cover transition-transform duration-700",
+            "object-cover transition-transform duration-700",
             !locked && "group-hover:scale-[1.04]",
           )}
         />

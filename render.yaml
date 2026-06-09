@@ -1,0 +1,19 @@
+# Render Blueprint — deploys the Tryll website.
+# In Render: New → Blueprint → pick this repo → Apply. That's the whole deploy.
+# (The AI runs on each visitor's local tryll.exe; the cloud only serves the UI
+#  + the /api/runs counter, so no GPU/secrets are needed here.)
+services:
+  - type: web
+    name: tryll-web
+    runtime: node
+    rootDir: web
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Optional: where the one-time runtime download lives once uploaded to R2.
+      # - key: NEXT_PUBLIC_DOWNLOAD_URL
+      #   value: https://cdn.tryllengine.com/stack/TryllSetup.exe
