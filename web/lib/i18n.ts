@@ -1,6 +1,7 @@
 "use client";
 
 import { useLanguage } from "./useLanguage";
+import { BRAND } from "./brand";
 
 /* UI localization. The same language picker that sets the chat language also
    translates the interface. Add a language by adding its dictionary below;
@@ -10,7 +11,7 @@ type Dict = Record<string, string>;
 
 const en: Dict = {
   // landing
-  "landing.eyebrow": "Local AI characters · powered by the Tryll engine",
+  "landing.eyebrow": "Local AI characters · private, on your device",
   "landing.title1": "Talk to anyone.",
   "landing.title2": "On your own machine.",
   "landing.subtitle":
@@ -54,7 +55,7 @@ const en: Dict = {
   "act.button": "Download model & start",
   "act.ready_t": "Your stack is ready",
   "act.ready_b": "Running locally on your machine.",
-  "act.installing": "Installing Tryll Desktop",
+  "act.installing": `Setting up ${BRAND}`,
   "act.downloading": "Downloading the model",
   "act.starting": "Starting your local server",
   "act.working": "Working…",
@@ -79,7 +80,7 @@ const en: Dict = {
 };
 
 const ru: Dict = {
-  "landing.eyebrow": "Локальные AI-персонажи · на движке Tryll",
+  "landing.eyebrow": "Локальные AI-персонажи · приватно, на устройстве",
   "landing.title1": "Говори с кем угодно.",
   "landing.title2": "На своём компьютере.",
   "landing.subtitle":
@@ -121,7 +122,7 @@ const ru: Dict = {
   "act.button": "Скачать модель и начать",
   "act.ready_t": "Стек готов",
   "act.ready_b": "Работает локально на твоей машине.",
-  "act.installing": "Установка Tryll Desktop",
+  "act.installing": `Настройка ${BRAND}`,
   "act.downloading": "Скачивание модели",
   "act.starting": "Запуск локального сервера",
   "act.working": "Работаю…",

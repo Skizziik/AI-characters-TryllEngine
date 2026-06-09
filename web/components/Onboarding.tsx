@@ -16,6 +16,7 @@ import type { StackState } from "@/lib/types";
 import { ActivatePanel } from "./ActivatePanel";
 import { CollageBackground } from "./CollageBackground";
 import { useT } from "@/lib/i18n";
+import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/cn";
 
 interface Props {
@@ -78,7 +79,7 @@ export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
                   <Sparkles className="size-7" />
                 </span>
                 <h2 className="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl">
-                  {t("onb.welcome")} <span className="gradient-text">Tryll Engine</span>
+                  {t("onb.welcome")} <span className="gradient-text">{BRAND}</span>
                 </h2>
                 <p className="mt-3 max-w-md text-muted">{t("onb.welcome_body")}</p>
               </>

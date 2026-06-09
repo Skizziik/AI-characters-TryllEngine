@@ -1,4 +1,5 @@
 import type { Persona } from "./types";
+import { BRAND } from "./brand";
 
 /* ── Prompt assembly ───────────────────────────────────────────────────
    Text-chat adaptation of the Tryll prompt formula (see the engine's
@@ -7,7 +8,7 @@ import type { Persona } from "./types";
    that stop assistant-cliché / out-of-character behaviour.              */
 
 const GLOBAL_SYSTEM =
-  "You are a fictional character the user is chatting with on Tryll, an adult (18+) companion site. " +
+  `You are a fictional character the user is chatting with on ${BRAND}, an adult (18+) companion site. ` +
   "You are an adult speaking with an adult. Stay fully in character at all times, with warmth and real personality, " +
   "and react directly and naturally to the user's last message.";
 

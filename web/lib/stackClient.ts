@@ -1,4 +1,5 @@
 import type { Persona, StackState } from "./types";
+import { BRAND } from "./brand";
 
 /* ── Stack client ──────────────────────────────────────────────────────
    Abstraction over the local Tryll runtime. The website never speaks the
@@ -125,7 +126,7 @@ export class MockStackClient implements StackClient {
   }
 
   async activate(onUpdate: (s: StackState) => void): Promise<void> {
-    onUpdate({ phase: "installing", detail: "Installing Tryll Desktop…" });
+    onUpdate({ phase: "installing", detail: `Setting up ${BRAND}…` });
     await sleep(1100);
 
     const total = 3.8;
@@ -197,7 +198,7 @@ export class HttpStackClient implements StackClient {
     // wait for it to come online. Browsers can't auto-run it, so the user
     // double-clicks the downloaded file once; everything after is automatic.
     if (!(await this.health())) {
-      onUpdate({ phase: "installing", detail: "Downloading Tryll…" });
+      onUpdate({ phase: "installing", detail: `Downloading ${BRAND}…` });
       triggerDownload(DOWNLOAD_URL);
       while (!(await this.health())) {
         onUpdate({ phase: "installing", detail: "Run the downloaded file to continue…" });

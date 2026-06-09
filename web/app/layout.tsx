@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { BRAND } from "@/lib/brand";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Tryll — talk to characters that run on your machine",
+  title: `${BRAND} — AI characters that run on your machine`,
   description:
-    "Pick a character and chat. The AI runs locally on your own GPU — private, offline, yours. Powered by the Tryll engine.",
+    "Pick a character and chat. The AI runs locally on your own GPU — private, offline, yours.",
 };
 
 export default function RootLayout({
