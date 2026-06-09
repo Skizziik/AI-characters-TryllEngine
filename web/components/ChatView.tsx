@@ -8,6 +8,7 @@ import { buildSystemPrompt, getPersona, getVoice, localize } from "@/lib/persona
 import type { StackClient } from "@/lib/stackClient";
 import { useConversations, getConversation, saveMessages } from "@/lib/conversations";
 import { useLanguage } from "@/lib/useLanguage";
+import { codeFromName } from "@/lib/languages";
 import { speak, stopSpeaking, listenOnce, preloadVoice } from "@/lib/voice";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "./Avatar";
@@ -71,8 +72,12 @@ export function ChatView({
       return nv;
     });
 
+  // The reply is in the conversation's language — tell the TTS engine so it
+  // pronounces Russian (and the rest) correctly instead of as English.
+  const chatLang = conv ? codeFromName(conv.language) : code;
+
   const sayReply = (text: string) => {
-    if (voiceOn && text && persona) void speak(text, getVoice(persona.id)).catch(() => {});
+    if (voiceOn && text && persona) void speak(text, getVoice(persona.id), chatLang).catch(() => {});
   };
 
   const commit = (msgs: ChatMessage[]) => {
@@ -233,7 +238,7 @@ export function ChatView({
 
     if (opts.speakAndWait) {
       opts.onSpeakStart?.();
-      if (persona) await speak(acc, getVoice(persona.id)).catch(() => {});
+      if (persona) await speak(acc, getVoice(persona.id), chatLang).catch(() => {});
     } else {
       sayReply(acc);
     }

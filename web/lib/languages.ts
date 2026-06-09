@@ -27,3 +27,9 @@ export const DEFAULT_LANGUAGE = LANGUAGES[0];
 export function getLanguage(code: string): Language {
   return LANGUAGES.find((l) => l.code === code) ?? DEFAULT_LANGUAGE;
 }
+
+/** Reverse lookup: the language NAME stored on a conversation -> its ISO code
+ *  (used to tell the TTS engine which language the reply is in). */
+export function codeFromName(name: string): string {
+  return LANGUAGES.find((l) => l.name === name)?.code ?? "en";
+}

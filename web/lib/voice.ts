@@ -5,9 +5,7 @@
 type AnyPipe = (input: unknown, opts?: Record<string, unknown>) => Promise<{ text?: string; audio?: Float32Array; sampling_rate?: number }>;
 
 let sttPipe: AnyPipe | null = null;
-let ttsPipe: AnyPipe | null = null;
 let sttLoading: Promise<AnyPipe> | null = null;
-let ttsLoading: Promise<AnyPipe> | null = null;
 
 async function loadStt(): Promise<AnyPipe> {
   if (sttPipe) return sttPipe;
@@ -28,26 +26,11 @@ async function loadStt(): Promise<AnyPipe> {
   return sttPipe;
 }
 
-async function loadTts(): Promise<AnyPipe> {
-  if (ttsPipe) return ttsPipe;
-  if (!ttsLoading) {
-    ttsLoading = (async () => {
-      const { pipeline } = await import("@huggingface/transformers");
-      // Same precaution as Whisper: avoid the auto 4-bit variant. fp32 is small
-      // enough for this TTS model and sidesteps the missing-scale crash.
-      return (await pipeline("text-to-speech", "onnx-community/Supertonic-TTS-ONNX", {
-        device: "wasm",
-        dtype: "fp32",
-      })) as unknown as AnyPipe;
-    })();
-  }
-  ttsPipe = await ttsLoading;
-  return ttsPipe;
-}
-
-/** Pre-download both voice models (call during onboarding to warm the cache). */
+/** Pre-download the voice models (Whisper STT + Supertonic TTS engine + a
+ *  default voice) — call during onboarding to warm the cache. */
 export async function preloadVoice(): Promise<void> {
-  await Promise.all([loadStt(), loadTts()]);
+  const { loadEngine, loadStyle } = await import("./supertonic");
+  await Promise.all([loadStt(), loadEngine().then(() => loadStyle("F1"))]);
 }
 
 const WHISPER_LANG: Record<string, string> = { en: "english", ru: "russian" };
@@ -63,7 +46,16 @@ export async function transcribe(audio: Float32Array, langCode: string): Promise
   return (out.text ?? "").trim();
 }
 
-const VOICE_BASE = "https://huggingface.co/onnx-community/Supertonic-TTS-ONNX/resolve/main/voices";
+// UI/chat language code -> Supertonic language tag. Unknown languages fall back
+// to "na" (language-agnostic) so we never throw on an unsupported pick.
+const TTS_LANG: Record<string, string> = { en: "en", ru: "ru" };
+function ttsLang(code: string): string {
+  return TTS_LANG[code] ?? "na";
+}
+
+// Quality/latency knob for the denoising loop. The official demo defaults to 8;
+// 6 keeps call-mode replies snappy with no audible quality loss.
+const TTS_STEPS = 6;
 
 let playCtx: AudioContext | null = null;
 let currentSource: AudioBufferSourceNode | null = null;
@@ -77,22 +69,24 @@ export function stopSpeaking() {
   currentSource = null;
 }
 
-/** Synthesize `text` with the given Supertonic voice id (e.g. "F1", "M2") and play it. */
-export async function speak(text: string, voiceId: string): Promise<void> {
+/** Synthesize `text` with the given Supertonic voice id (e.g. "F1", "M2") in the
+ *  given language and play it. Resolves when playback ends. */
+export async function speak(text: string, voiceId: string, langCode = "en"): Promise<void> {
   const clean = text.trim();
   if (!clean) return;
-  const tts = await loadTts();
-  const out = await tts(clean, {
-    speaker_embeddings: `${VOICE_BASE}/${voiceId}.bin`,
-    num_inference_steps: 5,
-    speed: 1.0,
-  });
-  if (!out.audio || !out.sampling_rate) return;
+  const { loadEngine, loadStyle } = await import("./supertonic");
+  const [engine, style] = await Promise.all([loadEngine(), loadStyle(voiceId)]);
+  const { wav, duration } = await engine.call(clean, ttsLang(langCode), style, TTS_STEPS);
+
+  // Trim trailing padding using the predicted duration.
+  const wavLen = Math.floor(engine.sampleRate * duration[0]);
+  const samples = Float32Array.from(wav.slice(0, wavLen > 0 ? wavLen : wav.length));
+  if (!samples.length) return;
+
   stopSpeaking();
   playCtx = playCtx ?? new AudioContext();
   if (playCtx.state === "suspended") await playCtx.resume();
-  const samples = new Float32Array(out.audio); // ensure ArrayBuffer-backed
-  const buf = playCtx.createBuffer(1, samples.length, out.sampling_rate);
+  const buf = playCtx.createBuffer(1, samples.length, engine.sampleRate);
   buf.copyToChannel(samples, 0);
   const src = playCtx.createBufferSource();
   src.buffer = buf;
