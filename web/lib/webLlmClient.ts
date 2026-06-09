@@ -3,33 +3,26 @@ import type { StackClient } from "./stackClient";
 
 /* ── WebGPU stack client (web-llm / MLC) ───────────────────────────────────
    Zero install: the model runs entirely in the browser tab on the user's GPU
-   via WebGPU. "Activate" streams the model weights into the browser cache with
-   progress; chat is an in-tab streaming completion. No exe, no local server.
+   via WebGPU. "Activate" streams the model into the browser cache with progress;
+   chat is an in-tab streaming completion. No exe, no local server.
 
-   Trade-off vs the native client: this is NOT tryll_server — it's a browser
-   inference engine, so it uses an MLC-format model (Gemma here). v1 = text only.
+   Model: Qwen2.5-3B-Instruct — a 3B instruct model (no "thinking" mode) that
+   leaves real VRAM headroom on an 8 GB GPU, so long chats stay stable. (A 4B
+   model sits right at the 8 GB edge and the WebGPU runtime falls over after a
+   few generations — the native tryll_server path is the one for bigger models.)
 */
 
 const MODEL_ID =
-  process.env.NEXT_PUBLIC_WEBLLM_MODEL ?? "Qwen3.5-4B-q4f16_1-MLC";
+  process.env.NEXT_PUBLIC_WEBLLM_MODEL ?? "Qwen2.5-3B-Instruct-q4f16_1-MLC";
 
-type Conversation = { messages: { role: "system" | "user" | "assistant"; content: string }[] };
+type Msg = { role: "system" | "user" | "assistant"; content: string };
+type Conversation = { messages: Msg[] };
 
-/** Remove Qwen3 chain-of-thought from output (complete blocks + an unclosed
- *  trailing one), then left-trim the leftover whitespace. */
-function stripThink(s: string): string {
-  let out = s.replace(/<think>[\s\S]*?<\/think>/g, "");
-  const open = out.indexOf("<think>");
-  if (open !== -1) out = out.slice(0, open);
-  return out.replace(/^\s+/, "");
-}
-
-// web-llm's MLCEngine — loaded lazily (browser-only).
 type Engine = {
   chat: {
     completions: {
       create: (opts: {
-        messages: { role: string; content: string }[];
+        messages: Msg[];
         stream: boolean;
         temperature?: number;
         max_tokens?: number;
@@ -44,6 +37,7 @@ export class WebLlmStackClient implements StackClient {
   private loading: Promise<void> | null = null;
   private agents = new Map<string, Conversation>();
   private seq = 0;
+  private busy = false;
 
   async health(): Promise<boolean> {
     return this.engine !== null;
@@ -55,10 +49,7 @@ export class WebLlmStackClient implements StackClient {
       return;
     }
     if (typeof navigator === "undefined" || !("gpu" in navigator)) {
-      onUpdate({
-        phase: "error",
-        error: "WebGPU isn't available — use Chrome or Edge (latest).",
-      });
+      onUpdate({ phase: "error", error: "WebGPU isn't available — use Chrome or Edge (latest)." });
       throw new Error("WebGPU unavailable");
     }
     if (this.loading) return this.loading;
@@ -85,10 +76,7 @@ export class WebLlmStackClient implements StackClient {
 
   async createPersona(_p: Persona, systemPrompt: string): Promise<string> {
     const id = `web-${++this.seq}`;
-    // /no_think = Qwen3 soft switch that disables chain-of-thought.
-    this.agents.set(id, {
-      messages: [{ role: "system", content: `${systemPrompt}\n\n/no_think` }],
-    });
+    this.agents.set(id, { messages: [{ role: "system", content: systemPrompt }] });
     return id;
   }
 
@@ -98,39 +86,57 @@ export class WebLlmStackClient implements StackClient {
     onToken: (t: string) => void,
     signal?: AbortSignal,
   ): Promise<void> {
-    if (!this.engine) throw new Error("model not loaded");
+    if (!this.engine) {
+      onToken("⚠️ The model isn't loaded. Reload the page to re-activate.");
+      return;
+    }
+    if (this.busy) {
+      // web-llm runs one generation at a time; never overlap them.
+      onToken("…one moment, finishing the previous reply.");
+      return;
+    }
+    this.busy = true;
+
     const conv = this.agents.get(agentId) ?? { messages: [] };
     conv.messages.push({ role: "user", content: text });
 
-    const stream = await this.engine.chat.completions.create({
-      messages: conv.messages,
-      stream: true,
-      temperature: 0.8,
-      max_tokens: 320,
-    });
-
     let full = "";
-    let emitted = 0;
-    for await (const chunk of stream) {
-      if (signal?.aborted) {
-        this.engine.interruptGenerate?.();
-        break;
+    try {
+      const stream = await this.engine.chat.completions.create({
+        messages: conv.messages,
+        stream: true,
+        temperature: 0.8,
+        max_tokens: 512,
+      });
+      for await (const chunk of stream) {
+        if (signal?.aborted) {
+          try {
+            this.engine.interruptGenerate?.();
+          } catch {
+            /* ignore */
+          }
+          break;
+        }
+        const delta = chunk.choices[0]?.delta?.content ?? "";
+        if (delta) {
+          full += delta;
+          onToken(delta);
+        }
       }
-      const delta = chunk.choices[0]?.delta?.content ?? "";
-      if (!delta) continue;
-      full += delta;
-      // Emit only the think-stripped visible text, holding back any open block.
-      const visible = stripThink(full);
-      if (visible.length > emitted) {
-        onToken(visible.slice(emitted));
-        emitted = visible.length;
-      }
+      conv.messages.push({ role: "assistant", content: full });
+    } catch (e) {
+      console.error("[webllm] generation failed:", e);
+      const msg = e instanceof Error ? e.message : String(e);
+      // Surface the real reason instead of an empty bubble.
+      if (!full) onToken(`⚠️ Generation failed: ${msg}. Try reloading the page.`);
+      // Roll back the unanswered user turn so history stays consistent.
+      if (conv.messages[conv.messages.length - 1]?.role === "user") conv.messages.pop();
+    } finally {
+      this.busy = false;
     }
-    conv.messages.push({ role: "assistant", content: stripThink(full).trim() });
   }
 
   async closeAgent(agentId: string): Promise<void> {
-    // Keep the model warm; just drop the conversation history.
     this.agents.delete(agentId);
   }
 }
