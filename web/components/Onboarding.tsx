@@ -15,6 +15,7 @@ import {
 import type { StackState } from "@/lib/types";
 import { ActivatePanel } from "./ActivatePanel";
 import { CollageBackground } from "./CollageBackground";
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 
 interface Props {
@@ -25,12 +26,13 @@ interface Props {
 }
 
 const HOW = [
-  { icon: Download, title: "Activate once", body: "Install a tiny helper and download the model. Takes a couple of minutes." },
-  { icon: Users, title: "Pick a character", body: "Browse a cast of personalities — each with its own voice and vibe." },
-  { icon: MessageSquareHeart, title: "Just talk", body: "Chat freely. Replies are generated live, right on your machine." },
+  { icon: Download, titleKey: "onb.how1_t", bodyKey: "onb.how1_b" },
+  { icon: Users, titleKey: "onb.how2_t", bodyKey: "onb.how2_b" },
+  { icon: MessageSquareHeart, titleKey: "onb.how3_t", bodyKey: "onb.how3_b" },
 ];
 
 export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
+  const t = useT();
   const [step, setStep] = useState(0);
   const last = 3;
   const ready = state.phase === "ready";
@@ -43,7 +45,7 @@ export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
           onClick={onSkip}
           className="absolute right-6 top-6 z-20 inline-flex items-center gap-1 rounded-full border border-border-soft bg-surface/60 px-4 py-2 text-sm text-muted backdrop-blur transition hover:text-fg"
         >
-          Skip — I&apos;m set up
+          {t("onb.skip")}
         </button>
       )}
       <div className="relative z-10 mx-auto flex min-h-dvh max-w-3xl flex-col items-center justify-center px-6 py-16">
@@ -76,32 +78,29 @@ export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
                   <Sparkles className="size-7" />
                 </span>
                 <h2 className="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl">
-                  Welcome to <span className="gradient-text">Tryll Engine</span>
+                  {t("onb.welcome")} <span className="gradient-text">Tryll Engine</span>
                 </h2>
-                <p className="mt-3 max-w-md text-muted">
-                  A place to talk with AI characters that live entirely on your
-                  own computer. Let&apos;s get you set up — it only takes a minute.
-                </p>
+                <p className="mt-3 max-w-md text-muted">{t("onb.welcome_body")}</p>
               </>
             )}
 
             {step === 1 && (
               <>
                 <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-                  How it works
+                  {t("onb.how_title")}
                 </h2>
                 <div className="mt-8 grid w-full gap-4 sm:grid-cols-3">
                   {HOW.map((h, i) => (
                     <motion.div
-                      key={h.title}
+                      key={h.titleKey}
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.1 + i * 0.08 }}
                       className="rounded-2xl glass p-5 text-left"
                     >
                       <h.icon className="size-6 text-primary" />
-                      <p className="mt-3 font-medium">{h.title}</p>
-                      <p className="mt-1 text-sm text-muted">{h.body}</p>
+                      <p className="mt-3 font-medium">{t(h.titleKey)}</p>
+                      <p className="mt-1 text-sm text-muted">{t(h.bodyKey)}</p>
                     </motion.div>
                   ))}
                 </div>
@@ -114,17 +113,13 @@ export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
                   <ShieldCheck className="size-7" />
                 </span>
                 <h2 className="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl">
-                  Yours, and only yours
+                  {t("onb.private_title")}
                 </h2>
-                <p className="mt-3 max-w-md text-muted">
-                  After setup, everything runs offline on your GPU. Your
-                  conversations never touch a server — there&apos;s nothing to
-                  leak, sell, or rate-limit.
-                </p>
+                <p className="mt-3 max-w-md text-muted">{t("onb.private_body")}</p>
                 <div className="mt-6 flex flex-wrap justify-center gap-3 text-sm">
-                  <Badge icon={Cpu} text="Local inference" />
-                  <Badge icon={ShieldCheck} text="No data leaves your device" />
-                  <Badge icon={Sparkles} text="Unlimited chats" />
+                  <Badge icon={Cpu} text={t("onb.b_local")} />
+                  <Badge icon={ShieldCheck} text={t("onb.b_nodata")} />
+                  <Badge icon={Sparkles} text={t("onb.b_unlimited")} />
                 </div>
               </>
             )}
@@ -132,12 +127,10 @@ export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
             {step === 3 && (
               <>
                 <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-                  {ready ? "You're all set" : "Let's activate your stack"}
+                  {ready ? t("onb.activate_title_ready") : t("onb.activate_title")}
                 </h2>
                 <p className="mt-3 max-w-md text-muted">
-                  {ready
-                    ? "Your local AI is running. Time to meet the characters."
-                    : "Download the engine and model. You can watch the progress right here."}
+                  {ready ? t("onb.activate_body_ready") : t("onb.activate_body")}
                 </p>
                 <div className="mt-8 flex w-full justify-center">
                   <ActivatePanel state={state} onActivate={onActivate} />
@@ -156,7 +149,7 @@ export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
             className="inline-flex items-center gap-1.5 rounded-full border border-border-soft px-5 py-2.5 text-sm text-muted transition hover:text-fg"
           >
             <ArrowLeft className="size-4" />
-            Back
+            {t("onb.back")}
           </button>
         )}
 
@@ -165,7 +158,7 @@ export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
             onClick={() => setStep((s) => Math.min(last, s + 1))}
             className="group inline-flex items-center gap-2 rounded-full gradient-primary px-7 py-2.5 font-medium text-white ring-glow transition hover:brightness-110 active:scale-[0.98]"
           >
-            Continue
+            {t("onb.continue")}
             <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
           </button>
         ) : (
@@ -179,7 +172,7 @@ export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
                 : "cursor-not-allowed border border-border-soft text-muted-2",
             )}
           >
-            Meet the characters
+            {t("onb.meet")}
             <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
           </button>
         )}

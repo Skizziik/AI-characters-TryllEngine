@@ -5,14 +5,16 @@ import { ArrowRight, ShieldCheck, Cpu, Sparkles } from "lucide-react";
 import { PERSONAS } from "@/lib/personas";
 import { Avatar } from "./Avatar";
 import { CollageBackground } from "./CollageBackground";
+import { useT } from "@/lib/i18n";
 
 const FEATURES = [
-  { icon: ShieldCheck, label: "100% private" },
-  { icon: Cpu, label: "Runs on your GPU" },
-  { icon: Sparkles, label: "No subscription" },
+  { icon: ShieldCheck, key: "landing.f_private" },
+  { icon: Cpu, key: "landing.f_gpu" },
+  { icon: Sparkles, key: "landing.f_free" },
 ];
 
 export function Landing({ onStart, ready }: { onStart: () => void; ready?: boolean }) {
+  const t = useT();
   return (
     <section className="relative min-h-dvh w-full overflow-hidden">
       <CollageBackground />
@@ -24,7 +26,7 @@ export function Landing({ onStart, ready }: { onStart: () => void; ready?: boole
         className="inline-flex items-center gap-2 rounded-full border border-border-soft bg-surface/60 px-4 py-1.5 text-sm text-muted backdrop-blur"
       >
         <span className="size-1.5 rounded-full bg-success" />
-        Local AI characters · powered by the Tryll engine
+        {t("landing.eyebrow")}
         <span className="ml-1 rounded-full bg-primary/20 px-2 py-0.5 text-xs font-semibold text-accent">18+</span>
       </motion.div>
 
@@ -34,9 +36,9 @@ export function Landing({ onStart, ready }: { onStart: () => void; ready?: boole
         transition={{ duration: 0.55, delay: 0.05 }}
         className="mt-7 text-balance text-5xl font-semibold leading-[1.05] tracking-tight sm:text-7xl"
       >
-        Talk to anyone.
+        {t("landing.title1")}
         <br />
-        <span className="gradient-text">On your own machine.</span>
+        <span className="gradient-text">{t("landing.title2")}</span>
       </motion.h1>
 
       <motion.p
@@ -45,8 +47,7 @@ export function Landing({ onStart, ready }: { onStart: () => void; ready?: boole
         transition={{ duration: 0.55, delay: 0.12 }}
         className="mt-6 max-w-xl text-balance text-lg text-muted"
       >
-        Pick a character and start chatting. The AI runs entirely on your
-        computer — nothing leaves your device, no cloud, no limits.
+        {t("landing.subtitle")}
       </motion.p>
 
       <motion.div
@@ -59,14 +60,14 @@ export function Landing({ onStart, ready }: { onStart: () => void; ready?: boole
           onClick={onStart}
           className="group inline-flex items-center gap-2 rounded-full gradient-primary px-7 py-3.5 font-medium text-white ring-glow transition hover:brightness-110 active:scale-[0.98]"
         >
-          {ready ? "Open characters" : "Get started"}
+          {ready ? t("landing.ctaReady") : t("landing.cta")}
           <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
         </button>
         <div className="flex items-center gap-5 text-sm text-muted">
           {FEATURES.map((f) => (
-            <span key={f.label} className="inline-flex items-center gap-1.5">
+            <span key={f.key} className="inline-flex items-center gap-1.5">
               <f.icon className="size-4 text-primary" />
-              {f.label}
+              {t(f.key)}
             </span>
           ))}
         </div>

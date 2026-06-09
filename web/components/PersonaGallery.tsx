@@ -8,6 +8,7 @@ import { PersonaCard } from "./PersonaCard";
 import { ActivatePanel } from "./ActivatePanel";
 import { LanguagePicker } from "./LanguagePicker";
 import { useRuns } from "@/lib/useRuns";
+import { useT } from "@/lib/i18n";
 
 export function PersonaGallery({
   state,
@@ -24,6 +25,7 @@ export function PersonaGallery({
 }) {
   const ready = state.phase === "ready";
   const { counts } = useRuns();
+  const t = useT();
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-12">
@@ -31,19 +33,16 @@ export function PersonaGallery({
         <div className="flex flex-col gap-2">
           <div className="inline-flex items-center gap-2 text-sm text-primary">
             <Sparkles className="size-4" />
-            Characters
+            {t("gal.eyebrow")}
           </div>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Who do you want to talk to?
+            {t("gal.title")}
           </h1>
-          <p className="max-w-xl text-muted">
-            Each character runs live on your machine. Pick one and start a
-            conversation — switch any time.
-          </p>
+          <p className="max-w-xl text-muted">{t("gal.subtitle")}</p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <LanguagePicker value={language} onChange={onLanguageChange} />
-          <span className="text-xs text-muted-2">Chat language</span>
+          <span className="text-xs text-muted-2">{t("gal.chatlang")}</span>
         </div>
       </header>
 

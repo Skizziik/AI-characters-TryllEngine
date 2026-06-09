@@ -6,6 +6,7 @@ import { motion } from "motion/react";
 import { Lock, MessageCircle } from "lucide-react";
 import type { Persona } from "@/lib/types";
 import { formatCount } from "@/lib/format";
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 
 /** Large portrait card (polybuzz-style). Image fills the card; text sits
@@ -26,6 +27,7 @@ export function PersonaCard({
 }) {
   const [imgOk, setImgOk] = useState(true);
   const hasImg = !!persona.image && imgOk;
+  const t = useT();
 
   return (
     <motion.button
@@ -104,7 +106,7 @@ export function PersonaCard({
         {!locked && (
           <div className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
             <MessageCircle className="size-4" />
-            Start chatting
+            {t("card.start")}
           </div>
         )}
       </div>
@@ -114,7 +116,7 @@ export function PersonaCard({
         <div className="absolute inset-0 z-20 grid place-items-center bg-black/40 backdrop-blur-[2px]">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/60 px-3.5 py-1.5 text-xs text-white/90">
             <Lock className="size-3.5" />
-            Activate to unlock
+            {t("card.locked")}
           </span>
         </div>
       )}

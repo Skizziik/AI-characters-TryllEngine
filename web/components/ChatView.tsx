@@ -7,6 +7,7 @@ import type { ChatMessage } from "@/lib/types";
 import { buildSystemPrompt, getPersona } from "@/lib/personas";
 import type { StackClient } from "@/lib/stackClient";
 import { useConversations, getConversation, saveMessages } from "@/lib/conversations";
+import { useT } from "@/lib/i18n";
 import { Avatar } from "./Avatar";
 import { cn } from "@/lib/cn";
 
@@ -28,9 +29,12 @@ export function ChatView({
   onSwitch: (id: string) => void;
   onNewChat: () => void;
 }) {
+  const t = useT();
   const { conversations, remove } = useConversations();
   const conv = getConversation(conversationId);
   const persona = conv ? getPersona(conv.personaId) : undefined;
+  // History is per-character: only show chats with this persona.
+  const personaChats = conv ? conversations.filter((c) => c.personaId === conv.personaId) : [];
 
   const [messages, setMessages] = useState<ChatMessage[]>(conv?.messages ?? []);
   const [input, setInput] = useState("");
@@ -150,7 +154,7 @@ export function ChatView({
           <Avatar name={persona.name} gradient={persona.gradient} src={persona.image} size={34} ring />
           <p className="truncate font-semibold">{persona.name}</p>
           <span className={cn("ml-1 text-xs", connecting ? "text-muted-2" : "text-success")}>
-            {connecting ? "connecting…" : "online · local"}
+            {connecting ? t("chat.connecting") : t("chat.online")}
           </span>
           <button onClick={() => setPanel((p) => !p)} className="ml-auto grid size-9 place-items-center rounded-full text-muted hover:bg-surface hover:text-fg lg:hidden" aria-label="Panel">
             <PanelRight className="size-5" />
@@ -203,7 +207,7 @@ export function ChatView({
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={connecting ? "Waking up the character…" : `Message ${persona.name}…`}
+              placeholder={connecting ? t("chat.waking") : t("chat.placeholder", { name: persona.name })}
               disabled={connecting}
               className="flex-1 bg-transparent px-3 py-2 text-[15px] outline-none placeholder:text-muted-2 disabled:opacity-50"
             />
@@ -239,17 +243,17 @@ export function ChatView({
             onClick={onNewChat}
             className="flex w-full items-center gap-2 rounded-xl gradient-primary px-4 py-2.5 text-sm font-medium text-white ring-glow transition hover:brightness-110"
           >
-            <Plus className="size-4" /> New chat
+            <Plus className="size-4" /> {t("chat.newchat")}
           </button>
         </div>
 
         <div className="mt-5 flex items-center gap-2 px-4 text-xs font-medium uppercase tracking-wide text-muted-2">
-          <HistoryIcon className="size-3.5" /> History
+          <HistoryIcon className="size-3.5" /> {t("chat.history")}
         </div>
         <div className="no-scrollbar mt-1 max-h-[calc(100dvh-12rem)] overflow-y-auto px-2 pb-4">
-          {conversations.map((c) => {
+          {personaChats.map((c) => {
             const p = getPersona(c.personaId);
-            const last = c.messages[c.messages.length - 1]?.text ?? "New chat";
+            const last = c.messages[c.messages.length - 1]?.text ?? t("chat.newchat");
             return (
               <div
                 key={c.id}
