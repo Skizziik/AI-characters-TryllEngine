@@ -2,7 +2,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { SERVER_DIR, SERVER_EXE, WEIGHTS_DIR, LLM_DIR, CDN_BASE } from "./paths.ts";
+import { SERVER_DIR, SERVER_EXE, CDN_BASE } from "./paths.ts";
 
 export interface InstallProgress {
   component: "server" | "models";
@@ -49,24 +49,17 @@ async function downloadAndExtract(
   onProgress({ component, progress: 1, detail: "ready" });
 }
 
-/** Ensure the server binary + model weights are present, downloading whatever is
- *  missing from the CDN and reporting progress. When everything is already on
- *  disk (e.g. dev with TRYLL_SERVER_DIR pointing at a prebuilt server) it returns
- *  instantly with 100%. */
-export async function ensureComponents(onProgress: (p: InstallProgress) => void) {
+/** Ensure the server BINARY is present, downloading server.zip from the CDN if
+ *  missing (with progress). The model itself is fetched separately by the server
+ *  from HuggingFace during /setup. Instant when the binary is already on disk. */
+export async function ensureServer(onProgress: (p: InstallProgress) => void) {
   if (fs.existsSync(SERVER_EXE)) {
     onProgress({ component: "server", progress: 1, detail: "ready" });
   } else {
     await downloadAndExtract(`${CDN_BASE}/server.zip`, SERVER_DIR, "server", onProgress);
   }
-
-  if (fs.existsSync(LLM_DIR)) {
-    onProgress({ component: "models", progress: 1, detail: "ready" });
-  } else {
-    await downloadAndExtract(`${CDN_BASE}/weights.zip`, WEIGHTS_DIR, "models", onProgress);
-  }
 }
 
-export function componentsReady(): boolean {
-  return fs.existsSync(SERVER_EXE) && fs.existsSync(LLM_DIR);
+export function serverReady(): boolean {
+  return fs.existsSync(SERVER_EXE);
 }

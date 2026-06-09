@@ -24,11 +24,14 @@ import { NodeParams } from "./gen/tryll/node-params/node-params.js";
 import { GenerateParams } from "./gen/tryll/node-params/generate-params.js";
 import { SamplingOverrides } from "./gen/tryll/node-params/sampling-overrides.js";
 
+import { DownloadModelRequest } from "./gen/tryll/download-model-request.js";
 import { SessionReady } from "./gen/tryll/session-ready.js";
 import { CreateAgentResponse } from "./gen/tryll/create-agent-response.js";
 import { AnswerText } from "./gen/tryll/answer-text.js";
 import { TurnComplete } from "./gen/tryll/turn-complete.js";
 import { ErrorResponse } from "./gen/tryll/error-response.js";
+import { DownloadProgress } from "./gen/tryll/download-progress.js";
+import { DownloadComplete } from "./gen/tryll/download-complete.js";
 
 import { FrameReader, frame } from "./wire.ts";
 
@@ -57,12 +60,19 @@ const CHAT_SAMPLING: Sampling = {
   frequencyPenalty: 0.3,
 };
 
+export interface DownloadStatus {
+  percent: number; // 0..1
+  bytes: number;
+  total: number;
+}
+
 type Pending = {
   resolve: (v: unknown) => void;
   reject: (e: Error) => void;
   onToken?: (t: string) => void;
   full?: string; // accumulated raw answer (for cross-token marker stripping)
   emitted?: number; // chars already forwarded to onToken
+  onProgress?: (s: DownloadStatus) => void; // model download progress
 };
 
 export class TryllSession {
@@ -188,6 +198,20 @@ export class TryllSession {
     });
   }
 
+  /** Ask the server to download a model from its catalog (HuggingFace), streaming
+   *  progress. Resolves on DownloadComplete. No-op fast if already present. */
+  downloadModel(modelName: string, onProgress: (s: DownloadStatus) => void): Promise<void> {
+    const id = this.allocId();
+    const b = new flatbuffers.Builder(256);
+    const nameOff = b.createString(modelName);
+    const body = DownloadModelRequest.createDownloadModelRequest(b, id, nameOff);
+    const payload = this.wrap(b, MessageBody.DownloadModelRequest, body);
+    return new Promise<void>((resolve, reject) => {
+      this.pending.set(id.toString(), { resolve: () => resolve(), reject, onProgress });
+      this.send(payload);
+    });
+  }
+
   destroyAgent(agentId: bigint): Promise<void> {
     const id = this.allocId();
     const b = new flatbuffers.Builder(128);
@@ -249,8 +273,32 @@ export class TryllSession {
         p?.reject(new Error(`server error ${e.code()}: ${e.message() ?? ""}`));
         break;
       }
+      case MessageBody.DownloadProgress: {
+        const dp = msg.body(new DownloadProgress()) as DownloadProgress;
+        const p = this.pending.get(dp.requestId().toString());
+        if (p?.onProgress) {
+          p.onProgress({
+            percent: dp.percent(),
+            bytes: Number(dp.bytesDownloaded()),
+            total: Number(dp.totalBytes()),
+          });
+        }
+        break;
+      }
+      case MessageBody.DownloadComplete: {
+        const dc = msg.body(new DownloadComplete()) as DownloadComplete;
+        const key = dc.requestId().toString();
+        if (dc.success()) {
+          this.resolveById(key);
+        } else {
+          const p = this.pending.get(key);
+          this.pending.delete(key);
+          p?.reject(new Error(`download failed: ${dc.error() ?? ""}`));
+        }
+        break;
+      }
       default:
-        // DownloadProgress, NodeEvent, etc. — ignored for text v1.
+        // NodeEvent, TTS frames, etc. — ignored for text v1.
         break;
     }
   }

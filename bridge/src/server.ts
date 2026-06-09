@@ -16,9 +16,9 @@
 
 import net from "node:net";
 import { spawn, type ChildProcess } from "node:child_process";
-import { TryllSession } from "./codec.ts";
+import { TryllSession, DEFAULT_MODEL } from "./codec.ts";
 import { SERVER_DIR, SERVER_EXE } from "./paths.ts";
-import { ensureComponents, componentsReady } from "./installer.ts";
+import { ensureServer, serverReady } from "./installer.ts";
 import { hideConsole } from "./winconsole.ts";
 import { registerAutostart } from "./autostart.ts";
 
@@ -174,14 +174,31 @@ Bun.serve({
 
     // /health never boots the heavy server — it only reports presence/state.
     if (req.method === "GET" && pathname === "/health") {
-      return json({ ready: true, installed: componentsReady(), serverRunning: !!serverProc, version: 1 });
+      return json({ ready: true, installed: serverReady(), serverRunning: !!serverProc, version: 1 });
     }
 
-    // Install/download the components (server binary + model weights) with progress.
-    // Instant when everything is already on disk.
+    // Full install during onboarding: download the engine, then have the server
+    // download the model (HuggingFace) with progress, then shut the server back
+    // down. When the user later opens a chat the server wakes up already-ready.
     if (req.method === "POST" && pathname === "/setup") {
       return sse(async (send) => {
-        await ensureComponents((p) => send(p));
+        // 1. engine binary (server.zip from CDN, or instant if present)
+        await ensureServer((p) => send(p));
+        // 2. boot the engine + pull the model with live progress
+        await ensureReady();
+        const GB = 1e9;
+        await session!.downloadModel(DEFAULT_MODEL, (s) =>
+          send({
+            component: "models",
+            progress: s.total ? s.bytes / s.total : 0, // server `percent` is 0..100; bytes/total is unambiguous
+            detail: s.total
+              ? `${(s.bytes / GB).toFixed(2)} / ${(s.total / GB).toFixed(2)} GB`
+              : "starting…",
+          }),
+        );
+        send({ component: "models", progress: 1, detail: "ready" });
+        // 3. onboarding done → drop the engine; chats will wake it ready.
+        stopServer();
         send({ done: true });
       });
     }
