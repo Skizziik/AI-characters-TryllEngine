@@ -80,7 +80,7 @@ export class WebLlmStackClient implements StackClient {
             // we must keep sliding_window_size as built and disable the other —
             // forcing full attention instead produced scrambled output because
             // the KV cache no longer matched the compiled kernels.
-            overrides: { context_window_size: -1 },
+            overrides: { context_window_size: -1, attention_sink_size: 0 },
           },
         ],
       };
