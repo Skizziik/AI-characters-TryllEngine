@@ -14,13 +14,13 @@ async function loadStt(): Promise<AnyPipe> {
   if (!sttLoading) {
     sttLoading = (async () => {
       const { pipeline } = await import("@huggingface/transformers");
-      // Pin dtypes explicitly: the auto-selected default pulls a broken 4-bit
+      // Pin dtype to fp32: the auto-selected default pulls the broken 4-bit
       // (MatMulNBits) variant whose scales are missing, so session creation
       // throws "TransposeDQWeightsForMatMulNBits Missing required scale". fp32
-      // encoder + q8 decoder is a known-good, reasonably small WASM combo.
+      // is unquantized — no NBits nodes at all — and the files exist in the repo.
       return (await pipeline("automatic-speech-recognition", "onnx-community/whisper-base", {
         device: "wasm",
-        dtype: { encoder_model: "fp32", decoder_model_merged: "q8" },
+        dtype: "fp32",
       })) as unknown as AnyPipe;
     })();
   }
