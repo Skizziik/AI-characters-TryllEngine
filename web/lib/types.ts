@@ -13,6 +13,8 @@ export interface Persona {
   image?: string;
   /** short tags shown as chips */
   tags: string[];
+  /** mark adult/NSFW personas — shows an 18+ badge on the card */
+  adult?: boolean;
   /** the in-character description folded into the system prompt */
   persona: string;
   /** a few-sentence history that personalises the conversation */

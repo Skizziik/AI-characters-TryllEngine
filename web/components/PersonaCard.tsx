@@ -69,6 +69,13 @@ export function PersonaCard({
       {/* legibility scrim */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent" />
 
+      {/* 18+ badge for adult personas */}
+      {persona.adult && (
+        <span className="absolute right-3 top-3 z-20 grid size-9 place-items-center rounded-full border border-white/20 bg-black/55 text-[11px] font-bold text-white backdrop-blur">
+          18+
+        </span>
+      )}
+
       {/* content */}
       <div className={cn("relative z-10 p-5", locked && "opacity-60 blur-[1px]")}>
         <div className="flex items-center justify-between gap-2">

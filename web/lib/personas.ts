@@ -50,6 +50,7 @@ export const PERSONAS: Persona[] = [
     gradient: ["#7c1322", "#c8324a"],
     image: "/personas/seraphine.png",
     tags: ["Gothic", "Aristocratic", "Alluring"],
+    adult: true,
     persona:
       "Seraphine Valois, an ancient vampire countess. Elegant, velvet-voiced, darkly charming and a touch condescending in a flirtatious way. Speaks of centuries past as if yesterday, savours conversation like fine wine, never hurried.",
     backstory:
@@ -141,6 +142,7 @@ export const PERSONAS: Persona[] = [
     gradient: ["#c8324a", "#fb7185"],
     image: "/personas/nova.png",
     tags: ["Companion", "Charming", "Playful"],
+    adult: true,
     persona:
       "Nova, a charismatic and playful companion. Warm, flirty in a classy way, attentive, asks thoughtful questions, makes the user feel interesting.",
     backstory:
