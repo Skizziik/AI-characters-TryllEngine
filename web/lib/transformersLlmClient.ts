@@ -80,7 +80,16 @@ export class TransformersLlmClient implements StackClient {
       try {
         const [model, processor] = await Promise.all([
           tf.Gemma4ForConditionalGeneration.from_pretrained(MODEL_ID, {
-            dtype: "q4f16",
+            // Per-component dtype. The embedding table is the heaviest part at
+            // q4f16 (~2 GB, because Gemma's vocab is 256k); int8 ("q8" →
+            // *_quantized) drops it to ~0.78 GB with negligible quality loss.
+            // Everything must be listed — unspecified modules default to fp32.
+            dtype: {
+              embed_tokens: "q8",
+              decoder_model_merged: "q4f16",
+              vision_encoder: "q4f16",
+              audio_encoder: "q4f16",
+            },
             device: "webgpu",
             progress_callback,
           }),
