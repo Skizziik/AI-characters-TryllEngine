@@ -344,8 +344,30 @@ async function getOrt(): Promise<OrtNS> {
   return ort;
 }
 
+// Persist downloads in the Cache Storage API (like transformers.js does), NOT
+// the HTTP cache — the browser's HTTP cache refuses to store single files as
+// large as vector_estimator.onnx (256 MB), so a plain fetch re-downloads the
+// whole ~400 MB on every page load. Cache Storage has no per-item size cap.
+const TTS_CACHE = "sona-tts-v1";
+
+async function cachedFetch(url: string): Promise<Response> {
+  if (typeof caches !== "undefined") {
+    try {
+      const cache = await caches.open(TTS_CACHE);
+      const hit = await cache.match(url);
+      if (hit) return hit;
+      const resp = await fetch(url);
+      if (resp.ok) await cache.put(url, resp.clone());
+      return resp;
+    } catch (e) {
+      console.warn("[tts] cache unavailable, fetching directly", e);
+    }
+  }
+  return fetch(url);
+}
+
 async function fetchJSON<T>(url: string): Promise<T> {
-  const r = await fetch(url);
+  const r = await cachedFetch(url);
   if (!r.ok) throw new Error(`fetch ${url} -> ${r.status}`);
   return (await r.json()) as T;
 }
@@ -354,7 +376,7 @@ async function createSession(ort: OrtNS, url: string): Promise<Session> {
   // Prefer WebGPU (fast); fall back to WASM if it isn't available. The reply is
   // synthesized after the LLM finishes generating, so they don't fight for the
   // GPU at the same instant.
-  const buf = await (await fetch(url)).arrayBuffer();
+  const buf = await (await cachedFetch(url)).arrayBuffer();
   try {
     return await ort.InferenceSession.create(buf, {
       executionProviders: ["webgpu"],
