@@ -70,20 +70,20 @@ export function ActivatePanel({
           <span className="grid size-11 place-items-center rounded-xl gradient-primary text-white ring-glow">
             <Download className="size-5" />
           </span>
-          <h3 className="mt-4 text-lg font-semibold">Activate your AI stack</h3>
+          <h3 className="mt-4 text-lg font-semibold">Activate your AI</h3>
           <p className="mt-1.5 text-sm text-muted">
-            One-time setup. We install a small helper, download the model
-            (~3.8&nbsp;GB), and run everything locally — no account, no cloud.
+            Runs right in your browser on your GPU — no install, no account. We
+            download the model once into your browser; after that it works offline.
           </p>
 
           <ul className="mt-4 space-y-2 text-sm text-muted">
             <li className="flex items-center gap-2">
               <HardDriveDownload className="size-4 text-primary" />
-              Model weights stay on your disk
+              Model cached in your browser
             </li>
             <li className="flex items-center gap-2">
               <Server className="size-4 text-primary" />
-              Runs on your GPU, fully offline after setup
+              Private — runs on your GPU, nothing leaves your device
             </li>
           </ul>
 
@@ -92,7 +92,7 @@ export function ActivatePanel({
             className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl gradient-primary px-5 py-3 font-medium text-white ring-glow transition hover:brightness-110 active:scale-[0.99]"
           >
             <Download className="size-4" />
-            Activate &amp; download
+            Download model &amp; start
           </button>
         </div>
       )}

@@ -291,8 +291,14 @@ export class HttpStackClient implements StackClient {
   }
 }
 
-/** Singleton client for the app.
- *  Default: the real localhost bridge (HttpStackClient). Set
- *  NEXT_PUBLIC_STACK=mock to demo the flow without a local stack. */
+/** Singleton client for the app. Default = WebGPU (web-llm), zero install — the
+ *  model runs in the browser tab. NEXT_PUBLIC_STACK=native uses the local
+ *  tryll_server bridge; =mock uses the demo client. */
+import { WebLlmStackClient } from "./webLlmClient";
+
 export const stackClient: StackClient =
-  process.env.NEXT_PUBLIC_STACK === "mock" ? new MockStackClient() : new HttpStackClient();
+  process.env.NEXT_PUBLIC_STACK === "mock"
+    ? new MockStackClient()
+    : process.env.NEXT_PUBLIC_STACK === "native"
+      ? new HttpStackClient()
+      : new WebLlmStackClient();
