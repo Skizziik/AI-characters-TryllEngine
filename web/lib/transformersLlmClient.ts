@@ -83,19 +83,13 @@ export class TransformersLlmClient implements StackClient {
       try {
         const [model, processor] = await Promise.all([
           tf.Gemma4ForConditionalGeneration.from_pretrained(MODEL_ID, {
-            // Per-component dtype, all WebGPU-safe. int8 ("q8") would be smallest
-            // but onnxruntime-web's WebGPU EP doesn't support int8 ops — it hangs
-            // session init (transformers.js #1317). fp16 is fully supported AND,
-            // for this model, the fp16 embedding table (~1.34 GB) is actually
-            // smaller than q4f16 (~2.0 GB) — so this is both lighter and slightly
-            // more accurate. Decoder stays q4f16 (the WebGPU-tuned 4-bit format).
-            // All modules must be listed or an omitted one defaults to fp32.
-            dtype: {
-              embed_tokens: "fp16",
-              decoder_model_merged: "q4f16",
-              vision_encoder: "q4f16",
-              audio_encoder: "q4f16",
-            },
+            // Uniform q4f16 (string). This is the ONLY config that loads on the
+            // WebGPU EP here. A per-component dtype OBJECT (any combo, incl.
+            // fp16) hangs session init — it forces the unused multimodal
+            // vision/audio encoders to initialize on WebGPU, which stalls. int8
+            // ("q8") also hangs (transformers.js #1317). So we accept the larger
+            // ~5.2 GB uniform q4f16 load in exchange for it actually working.
+            dtype: "q4f16",
             device: "webgpu",
             progress_callback,
           }),
