@@ -6,14 +6,16 @@ import type { StackClient } from "./stackClient";
    via WebGPU. "Activate" streams the model into the browser cache with progress;
    chat is an in-tab streaming completion. No exe, no local server.
 
-   Model: Qwen2.5-3B-Instruct — a 3B instruct model (no "thinking" mode) that
-   leaves real VRAM headroom on an 8 GB GPU, so long chats stay stable. (A 4B
-   model sits right at the 8 GB edge and the WebGPU runtime falls over after a
-   few generations — the native tryll_server path is the one for bigger models.)
+   Model: Llama-3.2-3B-Instruct (q4f32) — a 3B instruct model (no "thinking"
+   mode) that leaves real VRAM headroom on an 8 GB GPU, so long chats stay
+   stable, and (per testing) handles this companion's tone/character better than
+   Qwen2.5-3B. Override with NEXT_PUBLIC_WEBLLM_MODEL. (A larger 7-9B model would
+   improve non-English fluency further but sits near the 8 GB edge once the voice
+   models also want the GPU.)
 */
 
 const MODEL_ID =
-  process.env.NEXT_PUBLIC_WEBLLM_MODEL ?? "Qwen2.5-3B-Instruct-q4f16_1-MLC";
+  process.env.NEXT_PUBLIC_WEBLLM_MODEL ?? "Llama-3.2-3B-Instruct-q4f32_1-MLC";
 
 type Msg = { role: "system" | "user" | "assistant"; content: string };
 type Conversation = { messages: Msg[] };
