@@ -77,16 +77,24 @@ export class WebLlmStackClient implements StackClient {
           },
         ],
       };
-      const engine = await webllm.CreateMLCEngine(MODEL_ID, {
-        appConfig,
-        initProgressCallback: (r: { progress: number; text: string }) => {
-          onUpdate({
-            phase: "downloading",
-            progress: r.progress,
-            detail: r.text?.replace(/\[.*?\]\s*/, "") || "Loading model…",
-          });
-        },
-      });
+      let engine;
+      try {
+        engine = await webllm.CreateMLCEngine(MODEL_ID, {
+          appConfig,
+          initProgressCallback: (r: { progress: number; text: string }) => {
+            onUpdate({
+              phase: "downloading",
+              progress: r.progress,
+              detail: r.text?.replace(/\[.*?\]\s*/, "") || "Loading model…",
+            });
+          },
+        });
+      } catch (e) {
+        console.error("[webllm] engine creation failed:", e);
+        const msg = e instanceof Error ? e.message : String(e);
+        onUpdate({ phase: "error", error: `Couldn't load ${MODEL_ID}: ${msg}` });
+        throw e;
+      }
       this.engine = engine as unknown as Engine;
       // Pull the voice models now (during onboarding) so chat voice is instant.
       onUpdate({ phase: "downloading", detail: "Voice models (Whisper + Supertonic)…" });

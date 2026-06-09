@@ -86,12 +86,18 @@ export function ActivatePanel({
             </li>
           </ul>
 
+          {state.phase === "error" && state.error && (
+            <p className="mt-4 break-words rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">
+              {state.error}
+            </p>
+          )}
+
           <button
             onClick={onActivate}
             className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl gradient-primary px-5 py-3 font-medium text-white ring-glow transition hover:brightness-110 active:scale-[0.99]"
           >
             <Download className="size-4" />
-            {t("act.button")}
+            {state.phase === "error" ? "Retry" : t("act.button")}
           </button>
         </div>
       )}
