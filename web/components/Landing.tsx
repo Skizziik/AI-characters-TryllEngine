@@ -25,6 +25,7 @@ export function Landing({ onStart, ready }: { onStart: () => void; ready?: boole
       >
         <span className="size-1.5 rounded-full bg-success" />
         Local AI characters · powered by the Tryll engine
+        <span className="ml-1 rounded-full bg-primary/20 px-2 py-0.5 text-xs font-semibold text-accent">18+</span>
       </motion.div>
 
       <motion.h1
