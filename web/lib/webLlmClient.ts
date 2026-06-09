@@ -143,6 +143,8 @@ export class WebLlmStackClient implements StackClient {
     conv.messages.push({ role: "user", content: text });
 
     let full = "";
+    let reasoning = "";
+    let logged = false;
     try {
       const stream = await this.engine.chat.completions.create({
         messages: conv.messages,
@@ -159,12 +161,25 @@ export class WebLlmStackClient implements StackClient {
           }
           break;
         }
-        const delta = chunk.choices[0]?.delta?.content ?? "";
+        const choice = chunk.choices[0] as
+          | { delta?: { content?: string; reasoning_content?: string }; finish_reason?: string }
+          | undefined;
+        const d = choice?.delta;
+        if (!logged) {
+          console.log("[webllm] first delta:", JSON.stringify(d));
+          logged = true;
+        }
+        if (d?.reasoning_content) reasoning += d.reasoning_content;
+        const delta = d?.content ?? "";
         if (delta) {
           full += delta;
           onToken(delta);
         }
+        if (choice?.finish_reason) console.log("[webllm] finish_reason:", choice.finish_reason);
       }
+      console.log(`[webllm] done: content=${full.length} chars, reasoning=${reasoning.length} chars`);
+      if (!full && reasoning) console.log("[webllm] reasoning (no content!):", reasoning.slice(0, 300));
+      if (!full && !reasoning) console.log("[webllm] EMPTY generation (no content, no reasoning)");
       conv.messages.push({ role: "assistant", content: full });
     } catch (e) {
       console.error("[webllm] generation failed:", e);
