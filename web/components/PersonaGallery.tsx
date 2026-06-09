@@ -23,12 +23,7 @@ export function PersonaGallery({
   onLanguageChange: (code: string) => void;
 }) {
   const ready = state.phase === "ready";
-  const { counts, increment } = useRuns();
-
-  const handlePick = (p: Persona) => {
-    increment(p.id);
-    onPick(p);
-  };
+  const { counts } = useRuns();
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-12">
@@ -73,7 +68,7 @@ export function PersonaGallery({
             key={p.id}
             persona={p}
             locked={!ready}
-            onPick={handlePick}
+            onPick={onPick}
             runs={counts[p.id]}
             index={i}
           />
