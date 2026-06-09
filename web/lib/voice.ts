@@ -14,8 +14,13 @@ async function loadStt(): Promise<AnyPipe> {
   if (!sttLoading) {
     sttLoading = (async () => {
       const { pipeline } = await import("@huggingface/transformers");
+      // Pin dtypes explicitly: the auto-selected default pulls a broken 4-bit
+      // (MatMulNBits) variant whose scales are missing, so session creation
+      // throws "TransposeDQWeightsForMatMulNBits Missing required scale". fp32
+      // encoder + q8 decoder is a known-good, reasonably small WASM combo.
       return (await pipeline("automatic-speech-recognition", "onnx-community/whisper-base", {
         device: "wasm",
+        dtype: { encoder_model: "fp32", decoder_model_merged: "q8" },
       })) as unknown as AnyPipe;
     })();
   }
@@ -28,8 +33,11 @@ async function loadTts(): Promise<AnyPipe> {
   if (!ttsLoading) {
     ttsLoading = (async () => {
       const { pipeline } = await import("@huggingface/transformers");
+      // Same precaution as Whisper: avoid the auto 4-bit variant. fp32 is small
+      // enough for this TTS model and sidesteps the missing-scale crash.
       return (await pipeline("text-to-speech", "onnx-community/Supertonic-TTS-ONNX", {
         device: "wasm",
+        dtype: "fp32",
       })) as unknown as AnyPipe;
     })();
   }
