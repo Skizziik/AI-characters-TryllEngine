@@ -387,21 +387,15 @@ async function fetchJSON<T>(url: string): Promise<T> {
 }
 
 async function createSession(ort: OrtNS, url: string): Promise<Session> {
-  // Prefer WebGPU (fast); fall back to WASM if it isn't available. The reply is
-  // synthesized after the LLM finishes generating, so they don't fight for the
-  // GPU at the same instant.
+  // Run TTS on WASM (CPU), NOT WebGPU: the LLM (Gemma 4) already owns the GPU,
+  // and streaming TTS synthesizes sentences WHILE the model is still generating
+  // — sharing the GPU made both crawl. CPU keeps the GPU free for fast token
+  // generation; voice synthesis runs in parallel on the CPU.
   const buf = await cachedBytes(url);
-  try {
-    return await ort.InferenceSession.create(buf, {
-      executionProviders: ["webgpu"],
-      graphOptimizationLevel: "all",
-    });
-  } catch {
-    return await ort.InferenceSession.create(buf, {
-      executionProviders: ["wasm"],
-      graphOptimizationLevel: "all",
-    });
-  }
+  return await ort.InferenceSession.create(buf, {
+    executionProviders: ["wasm"],
+    graphOptimizationLevel: "all",
+  });
 }
 
 /** Load (and cache) the full Supertonic engine: 4 ONNX graphs + config + indexer. */
