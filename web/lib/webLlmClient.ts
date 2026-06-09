@@ -74,6 +74,11 @@ export class WebLlmStackClient implements StackClient {
             model_id: GEMMA4_E2B,
             model_lib: `${GEMMA4_REPO}/libs/gemma-4-E2B-it-q4f16_1-MLC-webgpu.wasm`,
             required_features: ["shader-f16"],
+            // The build's config sets BOTH context_window_size and
+            // sliding_window_size, which web-llm rejects ("only one can be
+            // positive"). Disable the sliding window and keep a 4096 context,
+            // exactly like the prebuilt gemma-2 / gemma-3 records.
+            overrides: { context_window_size: 4096, sliding_window_size: -1 },
           },
         ],
       };
