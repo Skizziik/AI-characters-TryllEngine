@@ -186,12 +186,26 @@ export async function listenOnce(langCode: string, opts: ListenOpts = {}): Promi
   });
   stream.getTracks().forEach((t) => t.stop());
 
+  console.log(`[voice] listen done: spoke=${spoke} chunks=${chunks.length} aborted=${aborted}`);
   if (aborted || !spoke || !chunks.length) {
     await ctx.close();
     return "";
   }
-  const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
-  await ctx.close();
-  const audio = await toMono16k(decoded);
-  return transcribe(audio, langCode);
+  try {
+    const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+    await ctx.close();
+    const audio = await toMono16k(decoded);
+    console.log(`[voice] transcribing ${audio.length} samples (${langCode})`);
+    const text = await transcribe(audio, langCode);
+    console.log(`[voice] transcript: "${text}"`);
+    return text;
+  } catch (e) {
+    try {
+      await ctx.close();
+    } catch {
+      /* ignore */
+    }
+    console.error("[voice] decode/transcribe failed", e);
+    throw e;
+  }
 }

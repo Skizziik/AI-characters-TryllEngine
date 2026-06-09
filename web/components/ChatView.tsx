@@ -8,7 +8,7 @@ import { buildSystemPrompt, getPersona, getVoice, localize } from "@/lib/persona
 import type { StackClient } from "@/lib/stackClient";
 import { useConversations, getConversation, saveMessages } from "@/lib/conversations";
 import { useLanguage } from "@/lib/useLanguage";
-import { speak, stopSpeaking, listenOnce } from "@/lib/voice";
+import { speak, stopSpeaking, listenOnce, preloadVoice } from "@/lib/voice";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "./Avatar";
 import { cn } from "@/lib/cn";
@@ -50,7 +50,8 @@ export function ChatView({
   const { code } = useLanguage();
   const [voiceOn, setVoiceOn] = useState(true);
   const [call, setCall] = useState(false);
-  const [voiceState, setVoiceState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+  const [voiceState, setVoiceState] = useState<"idle" | "preparing" | "listening" | "thinking" | "speaking">("idle");
+  const [voiceErr, setVoiceErr] = useState<string | null>(null);
   const callRef = useRef(false);
   const callAbortRef = useRef<AbortController | null>(null);
 
@@ -95,6 +96,27 @@ export function ChatView({
     }
     callRef.current = true;
     setCall(true);
+    setVoiceErr(null);
+
+    // Make sure the voice models are in the browser cache before we listen,
+    // otherwise the very first turn hangs silently on a multi-hundred-MB
+    // model download with no feedback.
+    setVoiceState("preparing");
+    try {
+      await preloadVoice();
+    } catch (e) {
+      console.error("[voice] preload failed", e);
+      if (callRef.current) setVoiceErr(e instanceof Error ? e.message : String(e));
+      callRef.current = false;
+      setCall(false);
+      setVoiceState("idle");
+      return;
+    }
+    if (!callRef.current) {
+      setVoiceState("idle");
+      return;
+    }
+
     let first = true;
     while (callRef.current) {
       setVoiceState("listening");
@@ -105,6 +127,7 @@ export function ChatView({
         text = await listenOnce(code, { silenceMs: first ? 1500 : 2500, signal: ac.signal });
       } catch (e) {
         console.error("[voice] listen failed", e);
+        if (callRef.current) setVoiceErr(e instanceof Error ? e.message : String(e));
         break;
       }
       first = false;
@@ -298,6 +321,14 @@ export function ChatView({
         </div>
 
         <div className="mx-auto w-full max-w-2xl px-4 pb-4">
+          {voiceErr && (
+            <div className="mb-2 flex items-start justify-between gap-3 rounded-xl border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">
+              <span>Voice: {voiceErr}</span>
+              <button type="button" onClick={() => setVoiceErr(null)} className="shrink-0 opacity-70 hover:opacity-100">
+                ✕
+              </button>
+            </div>
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();
