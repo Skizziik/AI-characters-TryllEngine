@@ -69,11 +69,14 @@ export function stopSpeaking() {
   currentSource = null;
 }
 
-/** Synthesize `text` with the given Supertonic voice id (e.g. "F1", "M2") in the
- *  given language and play it. Resolves when playback ends. */
-export async function speak(text: string, voiceId: string, langCode = "en"): Promise<void> {
+/** Pure synthesis: text → trimmed PCM samples (no playback). */
+async function synthesize(
+  text: string,
+  voiceId: string,
+  langCode: string,
+): Promise<{ samples: Float32Array<ArrayBuffer>; sampleRate: number } | null> {
   const clean = text.trim();
-  if (!clean) return;
+  if (!clean) return null;
   const { loadEngine, loadStyle } = await import("./supertonic");
   const [engine, style] = await Promise.all([loadEngine(), loadStyle(voiceId)]);
   const { wav, duration } = await engine.call(clean, ttsLang(langCode), style, TTS_STEPS);
@@ -81,12 +84,15 @@ export async function speak(text: string, voiceId: string, langCode = "en"): Pro
   // Trim trailing padding using the predicted duration.
   const wavLen = Math.floor(engine.sampleRate * duration[0]);
   const samples = Float32Array.from(wav.slice(0, wavLen > 0 ? wavLen : wav.length));
-  if (!samples.length) return;
+  return samples.length ? { samples, sampleRate: engine.sampleRate } : null;
+}
 
+/** Play PCM samples; resolves when playback ends. */
+async function playSamples(samples: Float32Array<ArrayBuffer>, sampleRate: number): Promise<void> {
   stopSpeaking();
   playCtx = playCtx ?? new AudioContext();
   if (playCtx.state === "suspended") await playCtx.resume();
-  const buf = playCtx.createBuffer(1, samples.length, engine.sampleRate);
+  const buf = playCtx.createBuffer(1, samples.length, sampleRate);
   buf.copyToChannel(samples, 0);
   const src = playCtx.createBufferSource();
   src.buffer = buf;
@@ -99,6 +105,13 @@ export async function speak(text: string, voiceId: string, langCode = "en"): Pro
   });
 }
 
+/** Synthesize `text` with the given Supertonic voice id (e.g. "F1", "M2") in the
+ *  given language and play it. Resolves when playback ends. */
+export async function speak(text: string, voiceId: string, langCode = "en"): Promise<void> {
+  const audio = await synthesize(text, voiceId, langCode);
+  if (audio) await playSamples(audio.samples, audio.sampleRate);
+}
+
 export interface SpeechStream {
   /** feed streamed reply text as it arrives */
   push(text: string): void;
@@ -108,35 +121,62 @@ export interface SpeechStream {
 
 /** Streaming TTS: synthesize & speak sentence-by-sentence as the reply streams
  *  in, so the first sentence plays while the rest is still being generated
- *  (instead of waiting for the whole reply). Sentences play in order. */
+ *  (instead of waiting for the whole reply). Synthesis and playback are
+ *  PIPELINED: while sentence N is playing, sentence N+1 is already being
+ *  synthesized on the CPU — otherwise every sentence boundary pauses for the
+ *  full multi-second synthesis of the next one. Sentences play in order. */
 export function speakStream(
   voiceId: string,
   langCode = "en",
   opts: { onStart?: () => void } = {},
 ): SpeechStream {
   let buffer = "";
-  const queue: string[] = [];
-  let processing = false;
+  const sentences: string[] = [];
+  const audioQ: { samples: Float32Array<ArrayBuffer>; sampleRate: number }[] = [];
+  let synthing = false;
+  let playing = false;
   let ended = false;
   let started = false;
   let resolveDone!: () => void;
   const done = new Promise<void>((r) => (resolveDone = r));
 
-  async function pump() {
-    if (processing) return;
-    processing = true;
+  function maybeDone() {
+    if (ended && !synthing && !playing && !sentences.length && !audioQ.length) resolveDone();
+  }
+
+  async function synthLoop() {
+    if (synthing) return;
+    synthing = true;
     try {
-      while (queue.length) {
-        const sentence = queue.shift()!;
+      while (sentences.length) {
+        const s = sentences.shift()!;
+        const audio = await synthesize(s, voiceId, langCode).catch(() => null);
+        if (audio) {
+          audioQ.push(audio);
+          void playLoop(); // marks `playing` synchronously before our next await
+        }
+      }
+    } finally {
+      synthing = false;
+      maybeDone();
+    }
+  }
+
+  async function playLoop() {
+    if (playing) return;
+    playing = true;
+    try {
+      while (audioQ.length) {
+        const a = audioQ.shift()!;
         if (!started) {
           started = true;
           opts.onStart?.();
         }
-        await speak(sentence, voiceId, langCode).catch(() => {});
+        await playSamples(a.samples, a.sampleRate).catch(() => {});
       }
     } finally {
-      processing = false;
-      if (ended && !queue.length) resolveDone();
+      playing = false;
+      maybeDone();
     }
   }
 
@@ -145,10 +185,10 @@ export function speakStream(
     let m: RegExpMatchArray | null;
     while ((m = buffer.match(/^([\s\S]*?[.!?…]+["'»)\]]*)(\s+)([\s\S]*)$/))) {
       const s = m[1].trim();
-      if (s) queue.push(s);
+      if (s) sentences.push(s);
       buffer = m[3];
     }
-    void pump();
+    void synthLoop();
   }
 
   return {
@@ -158,11 +198,11 @@ export function speakStream(
     },
     end() {
       const rest = buffer.trim();
-      if (rest) queue.push(rest);
+      if (rest) sentences.push(rest);
       buffer = "";
       ended = true;
-      if (!processing && !queue.length) resolveDone();
-      else void pump();
+      void synthLoop();
+      maybeDone();
       return done;
     },
   };
