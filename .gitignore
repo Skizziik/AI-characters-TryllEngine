@@ -38,4 +38,6 @@ Thumbs.db
 # local Tryll server clone (added later, large — never commit)
 server-src/
 tryll-mono/
-desktop/target/
+
+# compiled portable runtime (regenerate with: cd bridge && bun run compile)
+bridge/dist/

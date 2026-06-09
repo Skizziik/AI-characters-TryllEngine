@@ -16,16 +16,15 @@
 
 import net from "node:net";
 import { spawn, type ChildProcess } from "node:child_process";
-import path from "node:path";
 import { TryllSession } from "./codec.ts";
+import { SERVER_DIR, SERVER_EXE } from "./paths.ts";
+import { ensureComponents, componentsReady } from "./installer.ts";
+import { hideConsole } from "./winconsole.ts";
+import { registerAutostart } from "./autostart.ts";
 
 const PORT = Number(process.env.BRIDGE_PORT ?? 9123);
 const TRYLL_HOST = process.env.TRYLL_HOST ?? "127.0.0.1";
 const TRYLL_PORT = Number(process.env.TRYLL_PORT ?? 9100);
-// Folder containing tryll_server.exe + its DLLs + data/ (cwd must be here).
-const SERVER_DIR =
-  process.env.TRYLL_SERVER_DIR ?? "D:/DEV/Claude/UNITYGAMES/server";
-const SERVER_EXE = path.join(SERVER_DIR, "tryll_server.exe");
 // Grace before shutting the server after the last agent leaves (ms).
 const SHUTDOWN_GRACE_MS = Number(process.env.TRYLL_SHUTDOWN_GRACE_MS ?? 1500);
 
@@ -161,15 +160,30 @@ function sse(run: (send: (obj: unknown) => void) => Promise<void>): Response {
   });
 }
 
+// Run invisibly + persist across reboots. hideConsole is a no-op unless we own a
+// console window (double-clicked exe). Autostart is gated so dev `bun run` and
+// test runs don't register a scheduled task on the machine.
+hideConsole();
+if (process.env.TRYLL_AUTOSTART === "1") registerAutostart(process.execPath);
+
 Bun.serve({
   port: PORT,
   async fetch(req) {
     const { pathname } = new URL(req.url);
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
-    // /health never boots the heavy server — it only says the stack is installed.
+    // /health never boots the heavy server — it only reports presence/state.
     if (req.method === "GET" && pathname === "/health") {
-      return json({ ready: true, serverRunning: !!serverProc, version: 1 });
+      return json({ ready: true, installed: componentsReady(), serverRunning: !!serverProc, version: 1 });
+    }
+
+    // Install/download the components (server binary + model weights) with progress.
+    // Instant when everything is already on disk.
+    if (req.method === "POST" && pathname === "/setup") {
+      return sse(async (send) => {
+        await ensureComponents((p) => send(p));
+        send({ done: true });
+      });
     }
 
     // Enter chat: boot server (waits until ready) + create agent.

@@ -16,6 +16,20 @@ import type { Persona, StackState } from "./types";
 export const BRIDGE_BASE =
   process.env.NEXT_PUBLIC_BRIDGE_URL ?? "http://127.0.0.1:9123";
 
+/** One-time portable runtime the user downloads + runs once (hosted on our CDN). */
+export const DOWNLOAD_URL =
+  process.env.NEXT_PUBLIC_DOWNLOAD_URL ?? "https://cdn.tryllengine.com/stack/TryllSetup.exe";
+
+function triggerDownload(url: string) {
+  if (typeof document === "undefined") return;
+  const a = document.createElement("a");
+  a.href = url;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 export interface StackClient {
   /** is a local runtime up and the model loaded? */
   health(): Promise<boolean>;
@@ -178,9 +192,20 @@ export class HttpStackClient implements StackClient {
   }
 
   async activate(onUpdate: (s: StackState) => void): Promise<void> {
-    // Install handoff happens via the tryll:// deep link + Tryll Desktop.
-    // Here we drive the model download over SSE and wait for /health.
-    const res = await fetch(`${this.base}/models/download`, { method: "POST" });
+    // First run: no local runtime yet → download the one-time portable exe and
+    // wait for it to come online. Browsers can't auto-run it, so the user
+    // double-clicks the downloaded file once; everything after is automatic.
+    if (!(await this.health())) {
+      onUpdate({ phase: "installing", detail: "Downloading Tryll…" });
+      triggerDownload(DOWNLOAD_URL);
+      while (!(await this.health())) {
+        onUpdate({ phase: "installing", detail: "Run the downloaded file to continue…" });
+        await sleep(1500);
+      }
+    }
+
+    // Download the components (engine + model) with progress.
+    const res = await fetch(`${this.base}/setup`, { method: "POST" });
     if (res.body) {
       const reader = res.body.getReader();
       const dec = new TextDecoder();
@@ -194,12 +219,23 @@ export class HttpStackClient implements StackClient {
         for (const part of parts) {
           const line = part.replace(/^data:\s*/, "").trim();
           if (!line) continue;
-          const j = JSON.parse(line) as { progress?: number; detail?: string };
-          onUpdate({ phase: "downloading", progress: j.progress, detail: j.detail });
+          const j = JSON.parse(line) as {
+            component?: "server" | "models";
+            progress?: number;
+            detail?: string;
+          };
+          if (j.component) {
+            onUpdate({
+              phase: "downloading",
+              progress: j.progress,
+              detail: `${j.component === "server" ? "Engine" : "Model"} · ${j.detail}`,
+            });
+          }
         }
       }
     }
-    onUpdate({ phase: "starting", detail: "Loading model…" });
+
+    onUpdate({ phase: "starting", detail: "Finishing up…" });
     while (!(await this.health())) await sleep(800);
     onUpdate({ phase: "ready" });
   }

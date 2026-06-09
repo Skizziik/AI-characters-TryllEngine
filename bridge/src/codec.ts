@@ -61,6 +61,8 @@ type Pending = {
   resolve: (v: unknown) => void;
   reject: (e: Error) => void;
   onToken?: (t: string) => void;
+  full?: string; // accumulated raw answer (for cross-token marker stripping)
+  emitted?: number; // chars already forwarded to onToken
 };
 
 export class TryllSession {
@@ -181,7 +183,7 @@ export class TryllSession {
     const body = SendMessageRequest.createSendMessageRequest(b, id, agentId, textOff);
     const payload = this.wrap(b, MessageBody.SendMessageRequest, body);
     return new Promise<void>((resolve, reject) => {
-      this.pending.set(id.toString(), { resolve: () => resolve(), reject, onToken });
+      this.pending.set(id.toString(), { resolve: () => resolve(), reject, onToken, full: "", emitted: 0 });
       this.send(payload);
     });
   }
@@ -223,13 +225,15 @@ export class TryllSession {
       case MessageBody.AnswerText: {
         const a = msg.body(new AnswerText()) as AnswerText;
         const p = this.pending.get(a.requestId().toString());
-        const t = stripSpecial(a.text() ?? "");
-        if (p?.onToken && t) p.onToken(t);
+        if (p) this.streamAnswer(p, a.text() ?? "", false);
         break;
       }
       case MessageBody.TurnComplete: {
         const tc = msg.body(new TurnComplete()) as TurnComplete;
-        this.resolveById(tc.requestId().toString());
+        const key = tc.requestId().toString();
+        const p = this.pending.get(key);
+        if (p) this.streamAnswer(p, "", true); // flush held-back tail
+        this.resolveById(key);
         break;
       }
       case MessageBody.Ack: {
@@ -251,6 +255,21 @@ export class TryllSession {
     }
   }
 
+  /** Accumulate raw answer text, strip control markers (even when split across
+   *  tokens), and forward only the "safe" portion — holding back a trailing
+   *  partial that might be the start of a marker until more arrives or the turn ends. */
+  private streamAnswer(p: Pending, raw: string, final: boolean) {
+    if (!p.onToken) return;
+    p.full = (p.full ?? "") + raw;
+    const cleaned = stripSpecial(p.full);
+    const upto = final ? cleaned.length : safeEmitLength(cleaned);
+    const emitted = p.emitted ?? 0;
+    if (upto > emitted) {
+      p.onToken(cleaned.slice(emitted, upto));
+      p.emitted = upto;
+    }
+  }
+
   private resolveById(key: string, value?: unknown) {
     const p = this.pending.get(key);
     if (!p) return;
@@ -269,6 +288,15 @@ export class TryllSession {
 /** Strip Gemma chat-template control tokens that occasionally leak into output. */
 function stripSpecial(s: string): string {
   return s.replace(/<end_of_turn>|<start_of_turn>|<eos>|<bos>|<pad>/g, "");
+}
+
+/** Length safe to emit now: hold back a trailing unterminated "<…" that could
+ *  be the start of a control marker (all markers are <…>). */
+function safeEmitLength(s: string): number {
+  const lt = s.lastIndexOf("<");
+  if (lt === -1) return s.length;
+  const gt = s.indexOf(">", lt);
+  return gt === -1 ? lt : s.length;
 }
 
 function buildSampling(b: flatbuffers.Builder, s: Sampling): number | null {

@@ -6,7 +6,8 @@
   "description": "Localhost bridge: browser HTTP/SSE (CORS) <-> tryll_server TCP/FlatBuffers (:9100).",
   "scripts": {
     "probe": "bun run src/probe.ts",
-    "dev": "bun run src/server.ts"
+    "dev": "bun run src/server.ts",
+    "compile": "bun build ./src/server.ts --compile --outfile ./dist/tryll.exe"
   },
   "dependencies": {
     "flatbuffers": "^25.9.23"
