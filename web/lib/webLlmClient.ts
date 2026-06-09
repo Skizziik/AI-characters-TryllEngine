@@ -6,19 +6,20 @@ import type { StackClient } from "./stackClient";
    via WebGPU. "Activate" streams the model into the browser cache with progress;
    chat is an in-tab streaming completion. No exe, no local server.
 
-   Model: Gemma 4 E2B (instruct, q4f16) — Google's 2026 edge model, trained on
-   140 languages, so Russian and other non-English chats are far more fluent than
-   the older 3B models. It isn't in web-llm's prebuilt list yet, so we register a
-   community-compiled MLC build (welcoma/gemma-4-E2B-it-q4f16_1-MLC) via a custom
-   appConfig. Requires the WebGPU "shader-f16" feature (standard on modern GPUs).
-   Override with NEXT_PUBLIC_WEBLLM_MODEL (any prebuilt id still works — we extend
-   the prebuilt list rather than replace it).
+   Model: Llama-3.2-3B-Instruct (q4f32) — works reliably on stock web-llm and
+   (per testing) handles this companion's tone better than Qwen2.5-3B. Override
+   with NEXT_PUBLIC_WEBLLM_MODEL.
+
+   NOTE: We tried Gemma 4 E2B for its 140-language fluency, but the only MLC
+   build available (welcoma/gemma-4-E2B-it-q4f16_1-MLC) was compiled from a fork
+   of mlc-llm/TVM — its weights load, but generation aborts the wasm runtime
+   ("ExitStatus: exit(1)") under stock web-llm 0.2.84. Dead end via web-llm; the
+   working route to Gemma 4 is the ONNX build + transformers.js (see gemma-gem).
+   The registration below is kept (commented intent) for if a compatible build
+   appears, but the default stays on a model that actually runs.
 */
 
-const GEMMA4_E2B = "gemma-4-E2B-it-q4f16_1-MLC";
-const GEMMA4_REPO = "https://huggingface.co/welcoma/gemma-4-E2B-it-q4f16_1-MLC/resolve/main";
-
-const MODEL_ID = process.env.NEXT_PUBLIC_WEBLLM_MODEL ?? GEMMA4_E2B;
+const MODEL_ID = process.env.NEXT_PUBLIC_WEBLLM_MODEL ?? "Llama-3.2-3B-Instruct-q4f32_1-MLC";
 
 type Msg = { role: "system" | "user" | "assistant"; content: string };
 type Conversation = { messages: Msg[] };
@@ -62,32 +63,9 @@ export class WebLlmStackClient implements StackClient {
     this.loading = (async () => {
       onUpdate({ phase: "downloading", progress: 0, detail: "Preparing model…" });
       const webllm = await import("@mlc-ai/web-llm");
-      // Register Gemma 4 E2B (not in the prebuilt list yet) by extending the
-      // prebuilt model_list, so the default id resolves and any prebuilt id
-      // passed via NEXT_PUBLIC_WEBLLM_MODEL still works too.
-      const appConfig = {
-        ...webllm.prebuiltAppConfig,
-        model_list: [
-          ...webllm.prebuiltAppConfig.model_list,
-          {
-            model: GEMMA4_REPO,
-            model_id: GEMMA4_E2B,
-            model_lib: `${GEMMA4_REPO}/libs/gemma-4-E2B-it-q4f16_1-MLC-webgpu.wasm`,
-            required_features: ["shader-f16"],
-            // The build's config sets BOTH context_window_size (4096) and
-            // sliding_window_size (512), which web-llm rejects ("only one can be
-            // positive"). Gemma 4 was COMPILED with sliding-window attention, so
-            // we must keep sliding_window_size as built and disable the other —
-            // forcing full attention instead produced scrambled output because
-            // the KV cache no longer matched the compiled kernels.
-            overrides: { context_window_size: -1, attention_sink_size: 0 },
-          },
-        ],
-      };
       let engine;
       try {
         engine = await webllm.CreateMLCEngine(MODEL_ID, {
-          appConfig,
           initProgressCallback: (r: { progress: number; text: string }) => {
             onUpdate({
               phase: "downloading",
