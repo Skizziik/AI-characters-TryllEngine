@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, SendHorizontal, Loader2, Plus, Trash2, History as HistoryIcon, PanelRight } from "lucide-react";
+import { ArrowLeft, SendHorizontal, Loader2, Plus, Trash2, History as HistoryIcon, PanelRight, Mic, Volume2, VolumeX } from "lucide-react";
 import type { ChatMessage } from "@/lib/types";
-import { buildSystemPrompt, getPersona } from "@/lib/personas";
+import { buildSystemPrompt, getPersona, getVoice } from "@/lib/personas";
 import type { StackClient } from "@/lib/stackClient";
 import { useConversations, getConversation, saveMessages } from "@/lib/conversations";
+import { useLanguage } from "@/lib/useLanguage";
+import { transcribe, speak, stopSpeaking, startRecording, type Recorder } from "@/lib/voice";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "./Avatar";
 import { cn } from "@/lib/cn";
@@ -44,10 +46,63 @@ export function ChatView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // voice
+  const { code } = useLanguage();
+  const [voiceOn, setVoiceOn] = useState(true);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const recRef = useRef<Recorder | null>(null);
+
+  useEffect(() => {
+    setVoiceOn(localStorage.getItem("tryll.voice") !== "0");
+  }, []);
+
+  const toggleVoice = () =>
+    setVoiceOn((v) => {
+      const nv = !v;
+      try {
+        localStorage.setItem("tryll.voice", nv ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      if (!nv) stopSpeaking();
+      return nv;
+    });
+
+  const sayReply = (text: string) => {
+    if (voiceOn && text && persona) void speak(text, getVoice(persona.id)).catch(() => {});
+  };
+
   const commit = (msgs: ChatMessage[]) => {
     setMessages(msgs);
     saveMessages(conversationId, msgs);
   };
+
+  async function toggleMic() {
+    if (recording) {
+      setRecording(false);
+      const rec = recRef.current;
+      recRef.current = null;
+      if (!rec) return;
+      setTranscribing(true);
+      try {
+        const audio = await rec.stop();
+        const text = await transcribe(audio, code);
+        if (text) setInput((prev) => (prev ? prev + " " : "") + text);
+      } catch (e) {
+        console.error("[voice] transcribe failed", e);
+      } finally {
+        setTranscribing(false);
+      }
+    } else {
+      try {
+        recRef.current = await startRecording();
+        setRecording(true);
+      } catch (e) {
+        console.error("[voice] mic failed", e);
+      }
+    }
+  }
 
   // (Re)create the agent when the conversation changes; greet a fresh one.
   useEffect(() => {
@@ -78,7 +133,10 @@ export function ChatView({
             ac.signal,
           );
         } finally {
-          if (alive) commit([{ id: botId, role: "assistant", text: acc, ts: Date.now() }]);
+          if (alive) {
+            commit([{ id: botId, role: "assistant", text: acc, ts: Date.now() }]);
+            sayReply(acc);
+          }
         }
       }
     })();
@@ -86,6 +144,9 @@ export function ChatView({
     return () => {
       alive = false;
       abortRef.current?.abort();
+      stopSpeaking();
+      recRef.current?.cancel();
+      recRef.current = null;
       setAgentId((cur) => {
         if (cur) void client.closeAgent(cur);
         return null;
@@ -128,6 +189,7 @@ export function ChatView({
         return final;
       });
       setSending(false);
+      sayReply(acc);
     }
   }
 
@@ -156,7 +218,18 @@ export function ChatView({
           <span className={cn("ml-1 text-xs", connecting ? "text-muted-2" : "text-success")}>
             {connecting ? t("chat.connecting") : t("chat.online")}
           </span>
-          <button onClick={() => setPanel((p) => !p)} className="ml-auto grid size-9 place-items-center rounded-full text-muted hover:bg-surface hover:text-fg lg:hidden" aria-label="Panel">
+          <button
+            onClick={toggleVoice}
+            className={cn(
+              "ml-auto grid size-9 place-items-center rounded-full transition hover:bg-surface",
+              voiceOn ? "text-primary" : "text-muted-2 hover:text-fg",
+            )}
+            aria-label="Toggle voice"
+            title={voiceOn ? "Voice on" : "Voice off"}
+          >
+            {voiceOn ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
+          </button>
+          <button onClick={() => setPanel((p) => !p)} className="grid size-9 place-items-center rounded-full text-muted hover:bg-surface hover:text-fg lg:hidden" aria-label="Panel">
             <PanelRight className="size-5" />
           </button>
         </header>
@@ -204,6 +277,19 @@ export function ChatView({
             }}
             className="flex items-center gap-2 rounded-full border border-border-soft bg-surface px-2 py-1.5 focus-within:border-primary/50"
           >
+            <button
+              type="button"
+              onClick={toggleMic}
+              disabled={connecting || transcribing}
+              className={cn(
+                "grid size-10 shrink-0 place-items-center rounded-full transition disabled:opacity-40",
+                recording ? "animate-pulse bg-danger text-white" : "text-muted hover:bg-surface-2 hover:text-fg",
+              )}
+              aria-label="Voice input"
+              title="Hold a thought? Tap to talk"
+            >
+              {transcribing ? <Loader2 className="size-4 animate-spin" /> : <Mic className="size-4" />}
+            </button>
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}

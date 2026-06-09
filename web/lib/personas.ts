@@ -38,6 +38,26 @@ const GENDER: Record<string, "female" | "male"> = {
   mira: "female",
 };
 
+/** Fixed Supertonic voice per persona (F1-F5 female, M1-M5 male) — same voice
+ *  every time, matching the character's gender. */
+const VOICE: Record<string, string> = {
+  seraphine: "F1",
+  aria: "F2",
+  yuki: "F3",
+  nova: "F4",
+  bex: "F5",
+  mira: "F2",
+  kade: "M1",
+  kael: "M2",
+  reeves: "M3",
+  oda: "M4",
+  quill: "M5",
+};
+
+export function getVoice(id: string): string {
+  return VOICE[id] ?? "F1";
+}
+
 /** Build the full system prompt sent to the engine for a persona.
  *  `language` (when set) forces the reply language regardless of the user's input. */
 export function buildSystemPrompt(p: Persona, language?: string): string {
