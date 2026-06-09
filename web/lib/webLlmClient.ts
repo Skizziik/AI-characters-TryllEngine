@@ -6,14 +6,14 @@ import type { StackClient } from "./stackClient";
    via WebGPU. "Activate" streams the model into the browser cache with progress;
    chat is an in-tab streaming completion. No exe, no local server.
 
-   Model: Qwen3.5-4B (q4f16) — fast on web-llm's compiled WebGPU kernels and
-   strong in Russian. Qwen3.x are "thinking" models, so we disable reasoning
-   (/no_think) and strip any <think> blocks for snappy, clean replies. Override
-   with NEXT_PUBLIC_WEBLLM_MODEL. (Gemma 4 via transformers.js — NEXT_PUBLIC_STACK
-   =gemma — has the best Russian but a much slower engine.)
+   Model: Llama-3.2-3B-Instruct (q4f32) — fast and reliable on web-llm's compiled
+   WebGPU kernels; lighter download than the 4B/7B options. Override with
+   NEXT_PUBLIC_WEBLLM_MODEL (e.g. Qwen2.5-7B for stronger Russian). Gemma 4 via
+   transformers.js (NEXT_PUBLIC_STACK=gemma) has the best Russian but is slower.
+   The /no_think + <think> stripping below only kicks in for Qwen3.x models.
 */
 
-const MODEL_ID = process.env.NEXT_PUBLIC_WEBLLM_MODEL ?? "Qwen3.5-4B-q4f16_1-MLC";
+const MODEL_ID = process.env.NEXT_PUBLIC_WEBLLM_MODEL ?? "Llama-3.2-3B-Instruct-q4f32_1-MLC";
 
 // Qwen3 / Qwen3.5 reason by default; turn it off for a fast, clean companion.
 const THINKING_MODEL = /qwen3/i.test(MODEL_ID);
