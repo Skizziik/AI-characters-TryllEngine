@@ -6,16 +6,19 @@ import type { StackClient } from "./stackClient";
    via WebGPU. "Activate" streams the model into the browser cache with progress;
    chat is an in-tab streaming completion. No exe, no local server.
 
-   Model: Llama-3.2-3B-Instruct (q4f32) — a 3B instruct model (no "thinking"
-   mode) that leaves real VRAM headroom on an 8 GB GPU, so long chats stay
-   stable, and (per testing) handles this companion's tone/character better than
-   Qwen2.5-3B. Override with NEXT_PUBLIC_WEBLLM_MODEL. (A larger 7-9B model would
-   improve non-English fluency further but sits near the 8 GB edge once the voice
-   models also want the GPU.)
+   Model: Gemma 4 E2B (instruct, q4f16) — Google's 2026 edge model, trained on
+   140 languages, so Russian and other non-English chats are far more fluent than
+   the older 3B models. It isn't in web-llm's prebuilt list yet, so we register a
+   community-compiled MLC build (welcoma/gemma-4-E2B-it-q4f16_1-MLC) via a custom
+   appConfig. Requires the WebGPU "shader-f16" feature (standard on modern GPUs).
+   Override with NEXT_PUBLIC_WEBLLM_MODEL (any prebuilt id still works — we extend
+   the prebuilt list rather than replace it).
 */
 
-const MODEL_ID =
-  process.env.NEXT_PUBLIC_WEBLLM_MODEL ?? "Llama-3.2-3B-Instruct-q4f32_1-MLC";
+const GEMMA4_E2B = "gemma-4-E2B-it-q4f16_1-MLC";
+const GEMMA4_REPO = "https://huggingface.co/welcoma/gemma-4-E2B-it-q4f16_1-MLC/resolve/main";
+
+const MODEL_ID = process.env.NEXT_PUBLIC_WEBLLM_MODEL ?? GEMMA4_E2B;
 
 type Msg = { role: "system" | "user" | "assistant"; content: string };
 type Conversation = { messages: Msg[] };
@@ -59,7 +62,23 @@ export class WebLlmStackClient implements StackClient {
     this.loading = (async () => {
       onUpdate({ phase: "downloading", progress: 0, detail: "Preparing model…" });
       const webllm = await import("@mlc-ai/web-llm");
+      // Register Gemma 4 E2B (not in the prebuilt list yet) by extending the
+      // prebuilt model_list, so the default id resolves and any prebuilt id
+      // passed via NEXT_PUBLIC_WEBLLM_MODEL still works too.
+      const appConfig = {
+        ...webllm.prebuiltAppConfig,
+        model_list: [
+          ...webllm.prebuiltAppConfig.model_list,
+          {
+            model: GEMMA4_REPO,
+            model_id: GEMMA4_E2B,
+            model_lib: `${GEMMA4_REPO}/libs/gemma-4-E2B-it-q4f16_1-MLC-webgpu.wasm`,
+            required_features: ["shader-f16"],
+          },
+        ],
+      };
       const engine = await webllm.CreateMLCEngine(MODEL_ID, {
+        appConfig,
         initProgressCallback: (r: { progress: number; text: string }) => {
           onUpdate({
             phase: "downloading",
