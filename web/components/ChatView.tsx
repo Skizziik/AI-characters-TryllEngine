@@ -9,7 +9,7 @@ import type { StackClient } from "@/lib/stackClient";
 import { useConversations, getConversation, saveMessages } from "@/lib/conversations";
 import { useLanguage } from "@/lib/useLanguage";
 import { codeFromName } from "@/lib/languages";
-import { speak, stopSpeaking, listenOnce, preloadVoice } from "@/lib/voice";
+import { speak, speakStream, stopSpeaking, listenOnce, preloadVoice } from "@/lib/voice";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "./Avatar";
 import { cn } from "@/lib/cn";
@@ -227,6 +227,13 @@ export function ChatView({
     const ac = new AbortController();
     abortRef.current = ac;
     let acc = "";
+    // Stream the voice sentence-by-sentence so the first sentence plays while
+    // the rest of the reply is still being generated, instead of waiting for
+    // the whole reply to finish.
+    const speech =
+      persona && (voiceOn || opts.speakAndWait)
+        ? speakStream(getVoice(persona.id), chatLang, { onStart: opts.onSpeakStart })
+        : null;
     try {
       await client.chat(
         agentId,
@@ -234,6 +241,7 @@ export function ChatView({
         (t) => {
           acc += t;
           setMessages((m) => m.map((x) => (x.id === botId ? { ...x, text: acc } : x)));
+          speech?.push(t);
         },
         ac.signal,
       );
@@ -246,12 +254,8 @@ export function ChatView({
       setSending(false);
     }
 
-    if (opts.speakAndWait) {
-      opts.onSpeakStart?.();
-      if (persona) await speak(acc, getVoice(persona.id), chatLang).catch(() => {});
-    } else {
-      sayReply(acc);
-    }
+    // Wait for all audio to finish playing (call mode listens again after this).
+    if (speech) await speech.end();
     return acc;
   }
 

@@ -99,6 +99,75 @@ export async function speak(text: string, voiceId: string, langCode = "en"): Pro
   });
 }
 
+export interface SpeechStream {
+  /** feed streamed reply text as it arrives */
+  push(text: string): void;
+  /** mark the reply finished; resolves when all audio has played */
+  end(): Promise<void>;
+}
+
+/** Streaming TTS: synthesize & speak sentence-by-sentence as the reply streams
+ *  in, so the first sentence plays while the rest is still being generated
+ *  (instead of waiting for the whole reply). Sentences play in order. */
+export function speakStream(
+  voiceId: string,
+  langCode = "en",
+  opts: { onStart?: () => void } = {},
+): SpeechStream {
+  let buffer = "";
+  const queue: string[] = [];
+  let processing = false;
+  let ended = false;
+  let started = false;
+  let resolveDone!: () => void;
+  const done = new Promise<void>((r) => (resolveDone = r));
+
+  async function pump() {
+    if (processing) return;
+    processing = true;
+    try {
+      while (queue.length) {
+        const sentence = queue.shift()!;
+        if (!started) {
+          started = true;
+          opts.onStart?.();
+        }
+        await speak(sentence, voiceId, langCode).catch(() => {});
+      }
+    } finally {
+      processing = false;
+      if (ended && !queue.length) resolveDone();
+    }
+  }
+
+  function drain() {
+    // pull complete sentences (terminator + trailing space), keep the rest
+    let m: RegExpMatchArray | null;
+    while ((m = buffer.match(/^([\s\S]*?[.!?…]+["'»)\]]*)(\s+)([\s\S]*)$/))) {
+      const s = m[1].trim();
+      if (s) queue.push(s);
+      buffer = m[3];
+    }
+    void pump();
+  }
+
+  return {
+    push(text: string) {
+      buffer += text;
+      drain();
+    },
+    end() {
+      const rest = buffer.trim();
+      if (rest) queue.push(rest);
+      buffer = "";
+      ended = true;
+      if (!processing && !queue.length) resolveDone();
+      else void pump();
+      return done;
+    },
+  };
+}
+
 // ── Mic recording → 16 kHz mono Float32 (what Whisper expects) ──────────────
 async function toMono16k(audioBuffer: AudioBuffer): Promise<Float32Array> {
   const length = Math.ceil(audioBuffer.duration * 16000);
