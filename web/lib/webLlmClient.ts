@@ -67,6 +67,14 @@ export class WebLlmStackClient implements StackClient {
         },
       });
       this.engine = engine as unknown as Engine;
+      // Pull the voice models now (during onboarding) so chat voice is instant.
+      onUpdate({ phase: "downloading", detail: "Voice models (Whisper + Supertonic)…" });
+      try {
+        const { preloadVoice } = await import("./voice");
+        await preloadVoice();
+      } catch (e) {
+        console.error("[voice] preload failed", e);
+      }
       onUpdate({ phase: "ready" });
     })().finally(() => {
       this.loading = null;

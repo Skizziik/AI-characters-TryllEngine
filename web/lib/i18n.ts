@@ -77,6 +77,9 @@ const en: Dict = {
   "chat.waking": "Waking up the character…",
   "chat.back": "Back to characters",
   "chat.newchat": "New chat",
+  "chat.listening": "listening…",
+  "chat.thinking": "thinking…",
+  "chat.speaking": "speaking…",
 };
 
 const ru: Dict = {
@@ -141,6 +144,9 @@ const ru: Dict = {
   "chat.waking": "Бужу персонажа…",
   "chat.back": "К персонажам",
   "chat.newchat": "Новый чат",
+  "chat.listening": "слушаю…",
+  "chat.thinking": "думаю…",
+  "chat.speaking": "говорю…",
 };
 
 const DICTS: Record<string, Dict> = { en, ru };

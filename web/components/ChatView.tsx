@@ -4,11 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, SendHorizontal, Loader2, Plus, Trash2, History as HistoryIcon, PanelRight, Mic, Volume2, VolumeX } from "lucide-react";
 import type { ChatMessage } from "@/lib/types";
-import { buildSystemPrompt, getPersona, getVoice } from "@/lib/personas";
+import { buildSystemPrompt, getPersona, getVoice, localize } from "@/lib/personas";
 import type { StackClient } from "@/lib/stackClient";
 import { useConversations, getConversation, saveMessages } from "@/lib/conversations";
 import { useLanguage } from "@/lib/useLanguage";
-import { transcribe, speak, stopSpeaking, startRecording, type Recorder } from "@/lib/voice";
+import { speak, stopSpeaking, listenOnce } from "@/lib/voice";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "./Avatar";
 import { cn } from "@/lib/cn";
@@ -49,9 +49,10 @@ export function ChatView({
   // voice
   const { code } = useLanguage();
   const [voiceOn, setVoiceOn] = useState(true);
-  const [recording, setRecording] = useState(false);
-  const [transcribing, setTranscribing] = useState(false);
-  const recRef = useRef<Recorder | null>(null);
+  const [call, setCall] = useState(false);
+  const [voiceState, setVoiceState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+  const callRef = useRef(false);
+  const callAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setVoiceOn(localStorage.getItem("tryll.voice") !== "0");
@@ -78,30 +79,44 @@ export function ChatView({
     saveMessages(conversationId, msgs);
   };
 
-  async function toggleMic() {
-    if (recording) {
-      setRecording(false);
-      const rec = recRef.current;
-      recRef.current = null;
-      if (!rec) return;
-      setTranscribing(true);
-      try {
-        const audio = await rec.stop();
-        const text = await transcribe(audio, code);
-        if (text) setInput((prev) => (prev ? prev + " " : "") + text);
-      } catch (e) {
-        console.error("[voice] transcribe failed", e);
-      } finally {
-        setTranscribing(false);
-      }
-    } else {
-      try {
-        recRef.current = await startRecording();
-        setRecording(true);
-      } catch (e) {
-        console.error("[voice] mic failed", e);
-      }
+  function stopCall() {
+    callRef.current = false;
+    setCall(false);
+    callAbortRef.current?.abort();
+    stopSpeaking();
+    setVoiceState("idle");
+  }
+
+  // Hands-free call: listen (VAD) -> auto-send -> voiced reply -> listen again.
+  async function startCall() {
+    if (callRef.current) {
+      stopCall();
+      return;
     }
+    callRef.current = true;
+    setCall(true);
+    let first = true;
+    while (callRef.current) {
+      setVoiceState("listening");
+      const ac = new AbortController();
+      callAbortRef.current = ac;
+      let text = "";
+      try {
+        text = await listenOnce(code, { silenceMs: first ? 1500 : 2500, signal: ac.signal });
+      } catch (e) {
+        console.error("[voice] listen failed", e);
+        break;
+      }
+      first = false;
+      if (!callRef.current) break;
+      if (!text.trim()) continue;
+      setVoiceState("thinking");
+      await sendText(text, { speakAndWait: true, onSpeakStart: () => setVoiceState("speaking") });
+      if (!callRef.current) break;
+    }
+    callRef.current = false;
+    setCall(false);
+    setVoiceState("idle");
   }
 
   // (Re)create the agent when the conversation changes; greet a fresh one.
@@ -145,8 +160,8 @@ export function ChatView({
       alive = false;
       abortRef.current?.abort();
       stopSpeaking();
-      recRef.current?.cancel();
-      recRef.current = null;
+      callRef.current = false;
+      callAbortRef.current?.abort();
       setAgentId((cur) => {
         if (cur) void client.closeAgent(cur);
         return null;
@@ -159,10 +174,12 @@ export function ChatView({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  async function send() {
-    const text = input.trim();
-    if (!text || !agentId || sending) return;
-    setInput("");
+  async function sendText(
+    raw: string,
+    opts: { speakAndWait?: boolean; onSpeakStart?: () => void } = {},
+  ): Promise<string> {
+    const text = raw.trim();
+    if (!text || !agentId || sending) return "";
     setSending(true);
 
     const userMsg: ChatMessage = { id: uid(), role: "user", text, ts: Date.now() };
@@ -189,8 +206,15 @@ export function ChatView({
         return final;
       });
       setSending(false);
+    }
+
+    if (opts.speakAndWait) {
+      opts.onSpeakStart?.();
+      if (persona) await speak(acc, getVoice(persona.id)).catch(() => {});
+    } else {
       sayReply(acc);
     }
+    return acc;
   }
 
   if (!conv || !persona) {
@@ -215,8 +239,12 @@ export function ChatView({
           </button>
           <Avatar name={persona.name} gradient={persona.gradient} src={persona.image} size={34} ring />
           <p className="truncate font-semibold">{persona.name}</p>
-          <span className={cn("ml-1 text-xs", connecting ? "text-muted-2" : "text-success")}>
-            {connecting ? t("chat.connecting") : t("chat.online")}
+          <span className={cn("ml-1 text-xs", call ? "text-primary" : connecting ? "text-muted-2" : "text-success")}>
+            {call && voiceState !== "idle"
+              ? t(`chat.${voiceState}`)
+              : connecting
+                ? t("chat.connecting")
+                : t("chat.online")}
           </span>
           <button
             onClick={toggleVoice}
@@ -240,7 +268,7 @@ export function ChatView({
             <div className="flex flex-col items-center pt-6 pb-8 text-center">
               <Avatar name={persona.name} gradient={persona.gradient} src={persona.image} size={84} ring />
               <h2 className="mt-3 text-xl font-semibold">{persona.name}</h2>
-              <p className="mt-1 max-w-md text-sm text-muted">{persona.blurb}</p>
+              <p className="mt-1 max-w-md text-sm text-muted">{localize(persona, code).blurb}</p>
             </div>
 
             <div className="space-y-4">
@@ -273,22 +301,24 @@ export function ChatView({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              void send();
+              const txt = input;
+              setInput("");
+              void sendText(txt);
             }}
             className="flex items-center gap-2 rounded-full border border-border-soft bg-surface px-2 py-1.5 focus-within:border-primary/50"
           >
             <button
               type="button"
-              onClick={toggleMic}
-              disabled={connecting || transcribing}
+              onClick={startCall}
+              disabled={connecting}
               className={cn(
                 "grid size-10 shrink-0 place-items-center rounded-full transition disabled:opacity-40",
-                recording ? "animate-pulse bg-danger text-white" : "text-muted hover:bg-surface-2 hover:text-fg",
+                call ? "animate-pulse bg-danger text-white" : "text-muted hover:bg-surface-2 hover:text-fg",
               )}
-              aria-label="Voice input"
-              title="Hold a thought? Tap to talk"
+              aria-label="Voice call"
+              title="Hands-free voice chat"
             >
-              {transcribing ? <Loader2 className="size-4 animate-spin" /> : <Mic className="size-4" />}
+              <Mic className="size-4" />
             </button>
             <input
               value={input}

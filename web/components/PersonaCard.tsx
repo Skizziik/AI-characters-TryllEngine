@@ -6,6 +6,8 @@ import { motion } from "motion/react";
 import { Lock, MessageCircle } from "lucide-react";
 import type { Persona } from "@/lib/types";
 import { formatCount } from "@/lib/format";
+import { localize } from "@/lib/personas";
+import { useLanguage } from "@/lib/useLanguage";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 
@@ -28,6 +30,8 @@ export function PersonaCard({
   const [imgOk, setImgOk] = useState(true);
   const hasImg = !!persona.image && imgOk;
   const t = useT();
+  const { code } = useLanguage();
+  const loc = localize(persona, code);
 
   return (
     <motion.button
@@ -91,9 +95,9 @@ export function PersonaCard({
             </span>
           )}
         </div>
-        <p className="mt-1 line-clamp-2 text-sm text-white/70">{persona.tagline}</p>
+        <p className="mt-1 line-clamp-2 min-h-[2.5rem] text-sm text-white/70">{loc.tagline}</p>
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {persona.tags.map((t) => (
+          {loc.tags.map((t) => (
             <span
               key={t}
               className="rounded-full border border-white/15 bg-black/30 px-2.5 py-0.5 text-xs text-white/80 backdrop-blur-sm"

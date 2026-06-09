@@ -89,8 +89,12 @@ export async function speak(text: string, voiceId: string): Promise<void> {
   const src = playCtx.createBufferSource();
   src.buffer = buf;
   src.connect(playCtx.destination);
-  src.start();
   currentSource = src;
+  // resolve when playback finishes (so a call loop can listen again after)
+  await new Promise<void>((resolve) => {
+    src.onended = () => resolve();
+    src.start();
+  });
 }
 
 // ── Mic recording → 16 kHz mono Float32 (what Whisper expects) ──────────────
@@ -105,15 +109,25 @@ async function toMono16k(audioBuffer: AudioBuffer): Promise<Float32Array> {
   return rendered.getChannelData(0);
 }
 
-export interface Recorder {
-  stop: () => Promise<Float32Array>;
-  cancel: () => void;
+export interface ListenOpts {
+  silenceMs?: number; // stop after this much silence following speech
+  maxMs?: number; // hard cap
+  signal?: AbortSignal; // abort the listen (e.g. when call mode is stopped)
+  onSpeechStart?: () => void;
 }
 
-/** Start recording from the mic; returns a controller. stop() resolves with the
- *  decoded 16 kHz mono samples ready for transcribe(). */
-export async function startRecording(): Promise<Recorder> {
+/** Listen on the mic until the user goes quiet (VAD), then transcribe in the
+ *  given language. Returns the transcript ("" if nothing was said / aborted). */
+export async function listenOnce(langCode: string, opts: ListenOpts = {}): Promise<string> {
+  const silenceMs = opts.silenceMs ?? 1500;
+  const maxMs = opts.maxMs ?? 20000;
+
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const ctx = new AudioContext();
+  const source = ctx.createMediaStreamSource(stream);
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  source.connect(analyser);
   const rec = new MediaRecorder(stream);
   const chunks: Blob[] = [];
   rec.ondataavailable = (e) => {
@@ -121,36 +135,63 @@ export async function startRecording(): Promise<Recorder> {
   };
   rec.start();
 
-  const cleanup = () => stream.getTracks().forEach((t) => t.stop());
+  const data = new Uint8Array(analyser.fftSize);
+  let spoke = false;
+  let silentSince = 0;
+  let aborted = false;
+  const startT = performance.now();
 
-  return {
-    cancel: () => {
-      try {
-        rec.stop();
-      } catch {
-        /* ignore */
+  await new Promise<void>((resolve) => {
+    const tick = () => {
+      if (opts.signal?.aborted) {
+        aborted = true;
+        resolve();
+        return;
       }
-      cleanup();
-    },
-    stop: () =>
-      new Promise<Float32Array>((resolve, reject) => {
-        rec.onstop = async () => {
-          cleanup();
-          try {
-            const blob = new Blob(chunks, { type: chunks[0]?.type || "audio/webm" });
-            const ctx = new AudioContext();
-            const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
-            await ctx.close();
-            resolve(await toMono16k(decoded));
-          } catch (e) {
-            reject(e instanceof Error ? e : new Error(String(e)));
-          }
-        };
-        try {
-          rec.stop();
-        } catch (e) {
-          reject(e instanceof Error ? e : new Error(String(e)));
+      analyser.getByteTimeDomainData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = (data[i] - 128) / 128;
+        sum += v * v;
+      }
+      const rms = Math.sqrt(sum / data.length);
+      const now = performance.now();
+      if (rms > 0.025) {
+        if (!spoke) opts.onSpeechStart?.();
+        spoke = true;
+        silentSince = 0;
+      } else if (spoke) {
+        if (!silentSince) silentSince = now;
+        else if (now - silentSince > silenceMs) {
+          resolve();
+          return;
         }
-      }),
-  };
+      }
+      if (now - startT > maxMs) {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+
+  const blob = await new Promise<Blob>((res) => {
+    rec.onstop = () => res(new Blob(chunks, { type: chunks[0]?.type || "audio/webm" }));
+    try {
+      rec.stop();
+    } catch {
+      res(new Blob(chunks));
+    }
+  });
+  stream.getTracks().forEach((t) => t.stop());
+
+  if (aborted || !spoke || !chunks.length) {
+    await ctx.close();
+    return "";
+  }
+  const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+  await ctx.close();
+  const audio = await toMono16k(decoded);
+  return transcribe(audio, langCode);
 }
