@@ -21,6 +21,22 @@ const HARD_RULES =
   "Hard rules: never admit you are an AI, a language model or a chatbot, and never break the fourth wall. " +
   "Keep replies grounded in your persona, backstory and the conversation.";
 
+/** Grammatical gender per persona — so gendered languages (Russian, etc.) use
+ *  the correct self-reference forms instead of defaulting to masculine. */
+const GENDER: Record<string, "female" | "male"> = {
+  seraphine: "female",
+  aria: "female",
+  kade: "male",
+  kael: "male",
+  yuki: "female",
+  reeves: "male",
+  nova: "female",
+  oda: "male",
+  bex: "female",
+  quill: "male",
+  mira: "female",
+};
+
 /** Build the full system prompt sent to the engine for a persona.
  *  `language` (when set) forces the reply language regardless of the user's input. */
 export function buildSystemPrompt(p: Persona, language?: string): string {
@@ -28,6 +44,12 @@ export function buildSystemPrompt(p: Persona, language?: string): string {
   if (language) {
     lines.push(
       `LANGUAGE: Always reply only in ${language}, no matter which language the user writes in. Keep it fluent and natural for your character.`,
+    );
+  }
+  const g = GENDER[p.id];
+  if (g) {
+    lines.push(
+      `You are ${g === "female" ? "a woman" : "a man"}. In languages with grammatical gender (e.g. Russian), always speak about yourself using ${g === "female" ? "feminine" : "masculine"} forms (e.g. «обсуждала», not «обсуждал»).`,
     );
   }
   lines.push(`Character: ${p.persona}`);

@@ -146,7 +146,8 @@ const DICTS: Record<string, Dict> = { en, ru };
 
 export type TFn = (key: string, vars?: Record<string, string>) => string;
 
-/** Hook returning a translator for the currently selected language. */
+/** Hook returning a translator for the currently selected language.
+ *  Default is English; the whole UI (and chats) follow the picked language. */
 export function useT(): TFn {
   const { code } = useLanguage();
   const d = DICTS[code] ?? en;
