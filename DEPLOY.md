@@ -10,7 +10,33 @@ in the cloud.
 > local `http://127.0.0.1:9123` without a mixed-content block. This is the whole
 > trick that lets a hosted site drive a local engine.
 
-## 1. Create the Web Service
+## Option A — Vercel (recommended, no card)
+
+Best fit for Next.js: native `/api/runs` (serverless), native `next/image`, no
+cold-start sleep, free Hobby plan with **no card required**.
+
+1. [vercel.com](https://vercel.com) → sign in with GitHub.
+2. **Add New… → Project** → import `Skizziik/AI-characters-TryllEngine`.
+3. **Root Directory → `web`** (monorepo — required). Framework auto-detects as Next.js.
+4. Leave build/install on auto → **Deploy**. URL: `https://<project>.vercel.app`.
+
+> **Counter caveat on serverless:** Vercel functions are ephemeral, so the
+> in-memory `/api/runs` store won't accumulate or share across requests. For real
+> shared counts add **Vercel KV** (or Upstash Redis) and switch the route to
+> `INCR`/`MGET` (see §2). Until then the counter shows 0 and only ticks within a
+> warm instance.
+
+Env var (optional, once the runtime is on the CDN):
+`NEXT_PUBLIC_DOWNLOAD_URL = https://<your-r2>/TryllSetup.exe`
+
+---
+
+## Option B — Render (Blueprint; requires card verification)
+
+Render now asks for a card ($1 temp authorization, not charged) even on free.
+`render.yaml` in the repo makes it a Blueprint deploy.
+
+### Create the Web Service
 
 1. Push the repo to GitHub (already done: `Skizziik/AI-characters-TryllEngine`).
 2. Render dashboard → **New → Web Service** → connect the repo.
