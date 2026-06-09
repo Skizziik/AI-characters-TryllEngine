@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, SendHorizontal, Loader2, Plus, Trash2, History as HistoryIcon, PanelRight, Mic, Volume2, VolumeX } from "lucide-react";
 import type { ChatMessage } from "@/lib/types";
-import { buildSystemPrompt, getPersona, getVoice, localize } from "@/lib/personas";
+import { buildSystemPrompt, getGreeting, getPersona, getVoice, localize } from "@/lib/personas";
 import type { StackClient } from "@/lib/stackClient";
 import { useConversations, getConversation, saveMessages } from "@/lib/conversations";
 import { useLanguage } from "@/lib/useLanguage";
@@ -18,6 +18,39 @@ const uid = () =>
   typeof crypto !== "undefined" && crypto.randomUUID
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2);
+
+/* One chat bubble. Memoized so a streaming token only re-renders the bubble it
+   lands in — every other message keeps its object identity and is skipped. */
+const MessageBubble = memo(function MessageBubble({
+  m,
+  personaName,
+  gradient,
+  image,
+}: {
+  m: ChatMessage;
+  personaName: string;
+  gradient: [string, string];
+  image?: string;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={cn("flex items-end gap-2.5", m.role === "user" && "flex-row-reverse")}
+    >
+      {m.role === "assistant" && <Avatar name={personaName} gradient={gradient} src={image} size={30} />}
+      <div
+        className={cn(
+          "max-w-[80%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed",
+          m.role === "user" ? "gradient-primary text-white" : "border border-border-soft bg-surface text-fg",
+        )}
+      >
+        {m.text}
+        {m.streaming && <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 animate-pulse bg-primary align-middle" />}
+      </div>
+    </motion.div>
+  );
+});
 
 export function ChatView({
   conversationId,
@@ -165,16 +198,18 @@ export function ChatView({
         const ac = new AbortController();
         abortRef.current = ac;
         let acc = "";
-        // English: use the persona's hand-written greeting verbatim (best
-        // quality, zero cost). Other languages: GENERATE a fresh greeting in
-        // that language — asking a 3B model to "translate this line" is
-        // unreliable (it often just echoes the English), so we let it speak
-        // its own opening instead. The system prompt's anti-impersonation
-        // block keeps it greeting the user, not itself.
-        const greetInstr =
-          chatLang === "en"
-            ? `This is your very first line to the user. Say exactly this, word for word, and nothing else: "${persona.greeting}"`
-            : `This is the very first message of the chat. Greet the user — a newcomer you've just met, whose name you don't know — in character, written in ${conv.language}, in one or two short natural sentences. Greet THEM and invite them to talk; never use your own name for them.`;
+        // EN and RU ship hand-written greetings (best quality, the strongest
+        // opening style anchor) — the model is told to say them verbatim, in
+        // the chat's own language. Languages without a pack GENERATE a fresh
+        // greeting instead: asking a small model to "translate this line" is
+        // unreliable (it often just echoes the English). The system prompt's
+        // anti-impersonation block keeps it greeting the user, not itself.
+        const greet = getGreeting(persona, chatLang);
+        const greetInstr = greet
+          ? chatLang === "ru"
+            ? `Это твоя самая первая реплика в разговоре. Произнеси ровно это, слово в слово, и больше ничего: «${greet}»`
+            : `This is your very first line to the user. Say exactly this, word for word, and nothing else: "${greet}"`
+          : `This is the very first message of the chat. Greet the user — a newcomer you've just met, whose name you don't know — in character, written in ${conv.language}, in one or two short natural sentences. Greet THEM and invite them to talk; never use your own name for them.`;
         try {
           await client.chat(
             id,
@@ -209,7 +244,12 @@ export function ChatView({
   }, [conversationId, client]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    const el = scrollRef.current;
+    if (!el) return;
+    // Smooth-scroll between turns, but jump instantly while tokens stream in —
+    // a smooth scroll per token janks and never catches up.
+    const streaming = messages[messages.length - 1]?.streaming;
+    el.scrollTo({ top: el.scrollHeight, behavior: streaming ? "auto" : "smooth" });
   }, [messages]);
 
   async function sendText(
@@ -316,23 +356,13 @@ export function ChatView({
             <div className="space-y-4">
               <AnimatePresence initial={false}>
                 {messages.map((m) => (
-                  <motion.div
+                  <MessageBubble
                     key={m.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={cn("flex items-end gap-2.5", m.role === "user" && "flex-row-reverse")}
-                  >
-                    {m.role === "assistant" && <Avatar name={persona.name} gradient={persona.gradient} src={persona.image} size={30} />}
-                    <div
-                      className={cn(
-                        "max-w-[80%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed",
-                        m.role === "user" ? "gradient-primary text-white" : "border border-border-soft bg-surface text-fg",
-                      )}
-                    >
-                      {m.text}
-                      {m.streaming && <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 animate-pulse bg-primary align-middle" />}
-                    </div>
-                  </motion.div>
+                    m={m}
+                    personaName={persona.name}
+                    gradient={persona.gradient}
+                    image={persona.image}
+                  />
                 ))}
               </AnimatePresence>
             </div>

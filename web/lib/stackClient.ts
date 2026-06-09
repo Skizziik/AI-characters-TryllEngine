@@ -130,14 +130,14 @@ export class MockStackClient implements StackClient {
     await sleep(1100);
 
     const total = 3.8;
-    onUpdate({ phase: "downloading", progress: 0, detail: `Gemma 4 · 0.0 / ${total} GB` });
+    onUpdate({ phase: "downloading", progress: 0, detail: `Model · 0.0 / ${total} GB` });
     for (let i = 1; i <= 40; i++) {
       await sleep(70);
       const got = ((i / 40) * total).toFixed(1);
       onUpdate({
         phase: "downloading",
         progress: i / 40,
-        detail: `Gemma 4 · ${got} / ${total} GB`,
+        detail: `Model · ${got} / ${total} GB`,
       });
     }
 
@@ -293,17 +293,13 @@ export class HttpStackClient implements StackClient {
 }
 
 /** Singleton client for the app. Default = web-llm/MLC (fast compiled WebGPU
- *  kernels). NEXT_PUBLIC_STACK: "gemma" → Gemma 4 on transformers.js (best
- *  multilingual but slower engine); "native" → local tryll_server bridge;
- *  "mock" → demo client. */
+ *  kernels, Qwen3-8B). NEXT_PUBLIC_STACK: "native" → local tryll_server
+ *  bridge; "mock" → demo client. */
 import { WebLlmStackClient } from "./webLlmClient";
-import { TransformersLlmClient } from "./transformersLlmClient";
 
 export const stackClient: StackClient =
   process.env.NEXT_PUBLIC_STACK === "mock"
     ? new MockStackClient()
     : process.env.NEXT_PUBLIC_STACK === "native"
       ? new HttpStackClient()
-      : process.env.NEXT_PUBLIC_STACK === "gemma"
-        ? new TransformersLlmClient()
-        : new WebLlmStackClient();
+      : new WebLlmStackClient();

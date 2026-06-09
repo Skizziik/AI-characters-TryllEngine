@@ -60,7 +60,7 @@ export interface StackState {
   phase: StackPhase;
   /** 0..1 for the active long-running step (download), else undefined */
   progress?: number;
-  /** human label e.g. "Gemma 4 · 2.1 / 3.8 GB" */
+  /** human label e.g. "Model · 2.1 / 3.8 GB" */
   detail?: string;
   error?: string;
 }

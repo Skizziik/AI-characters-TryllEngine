@@ -387,7 +387,7 @@ async function fetchJSON<T>(url: string): Promise<T> {
 }
 
 async function createSession(ort: OrtNS, url: string): Promise<Session> {
-  // Run TTS on WASM (CPU), NOT WebGPU: the LLM (Gemma 4) already owns the GPU,
+  // Run TTS on WASM (CPU), NOT WebGPU: the LLM already owns the GPU,
   // and streaming TTS synthesizes sentences WHILE the model is still generating
   // — sharing the GPU made both crawl. CPU keeps the GPU free for fast token
   // generation; voice synthesis runs in parallel on the CPU.

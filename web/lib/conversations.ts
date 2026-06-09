@@ -34,12 +34,36 @@ function load(): Conversation[] {
   return cache!;
 }
 
+/** Cap what we WRITE per conversation — localStorage is ~5 MB total and one
+ *  long chat can quietly eat it. The in-memory list stays uncapped. */
+const MAX_SAVED_MESSAGES = 200;
+
+function serialize(list: Conversation[]): string {
+  return JSON.stringify(
+    list.map((c) =>
+      c.messages.length > MAX_SAVED_MESSAGES ? { ...c, messages: c.messages.slice(-MAX_SAVED_MESSAGES) } : c,
+    ),
+  );
+}
+
 function persist(list: Conversation[]) {
   cache = list;
-  try {
-    localStorage.setItem(KEY, JSON.stringify(list));
-  } catch {
-    /* ignore quota */
+  if (typeof localStorage !== "undefined") {
+    try {
+      localStorage.setItem(KEY, serialize(list));
+    } catch {
+      // Quota exceeded — drop the oldest chats from the WRITE until it fits.
+      const trimmed = [...list].sort((a, b) => b.updatedAt - a.updatedAt);
+      while (trimmed.length > 1) {
+        trimmed.pop();
+        try {
+          localStorage.setItem(KEY, serialize(trimmed));
+          break;
+        } catch {
+          /* keep dropping */
+        }
+      }
+    }
   }
   listeners.forEach((l) => l());
 }

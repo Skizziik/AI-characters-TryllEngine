@@ -159,11 +159,14 @@ const VOICE:  Record<string, string>            = { /* …, */ <id>: "F3" };
 
 ---
 
-## Step 5 — Russian translation (and any future language)
+## Step 5 — Russian pack (and any future language)
 
-Card copy is translated in `LOC_RU` (also keyed by `id`). Add an entry so the card
-reads naturally in Russian — **translate `tagline`, `blurb`, `tags`; keep the
-`name`**:
+`LOC_RU` (keyed by `id`) carries TWO things: the translated **card copy**
+(`tagline`, `blurb`, `tags` — UI `name` stays Latin) and the full Russian
+**character pack** (`name` in Cyrillic for the prompt, `persona`, `backstory`,
+`greeting`, `example`). A Russian chat is built on a fully Russian system
+prompt — English examples in a RU chat anchor small models to calqued,
+translated-sounding Russian, which is exactly what we're avoiding.
 
 ```ts
 const LOC_RU: Record<string, Loc> = {
@@ -172,14 +175,23 @@ const LOC_RU: Record<string, Loc> = {
     tagline: "…",
     blurb: "…",
     tags: ["…", "…", "…"],
+    name: "<Имя кириллицей — используется только внутри промпта>",
+    persona: "<кто это + характер + как говорит, 1–2 плотных предложения>",
+    backstory: "<ключевое событие + настоящее + невысказанное желание>",
+    greeting: "<первая реплика по-русски — произносится дословно>",
+    example:
+      "User: <бытовая реплика>\n<Имя>: <ответ ровно в голосе персонажа>\n" +
+      "User: <ещё реплика>\n<Имя>: <ответ>",
   },
 };
 ```
 
-You do **not** translate `persona` / `backstory` / `greeting` — the model handles
-the in-chat language (the `greeting` is auto-translated in character, and the
-`LANGUAGE` line forces replies into the picked language). Adding another UI
-language later = a new `LOC_xx` map + a dictionary in [`lib/i18n.ts`](lib/i18n.ts).
+Write the pack **natively, in the character's voice** — never translate the
+English fields word-for-word. The `example` is the strongest style lever on
+small models, so it matters most. Test on the local harness before shipping.
+Languages without a pack fall back to the English template + a `LANGUAGE`
+lock, and the model generates its own greeting. Adding another UI language
+later = a new `LOC_xx` map + a dictionary in [`lib/i18n.ts`](lib/i18n.ts).
 
 ---
 
@@ -221,7 +233,7 @@ Then add the matching `GENDER`, `VOICE`, and `LOC_RU` entries (Steps 4–5).
 - [ ] `gradient` matches the portrait palette
 - [ ] `GENDER[<id>]` set
 - [ ] `VOICE[<id>]` set (F/M matches gender)
-- [ ] `LOC_RU[<id>]` added (tagline/blurb/tags translated, name kept)
+- [ ] `LOC_RU[<id>]` added (card copy translated + full Russian character pack: name/persona/backstory/greeting/example)
 - [ ] `greeting` addresses the **user**, never the character's own name
 - [ ] `example` added (2 short exchanges in the character's voice)
 - [ ] `adult` flag set correctly
