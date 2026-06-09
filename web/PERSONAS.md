@@ -105,6 +105,29 @@ so it's the one line you fully control.
   *"You found my channel. Bold. So — what are we breaking into tonight?"*
 - **Don't:** use the user's name (the character doesn't know it), use *their own*
   name as if greeting themselves, or write a wall of text. One or two sentences.
+- **It's also a style anchor:** small models copy the *length and tone* of the
+  first message more reliably than any instruction. A tight, in-voice greeting
+  ⇒ tight, in-voice replies. A long flowery one ⇒ rambly replies.
+
+### `example` — how they sound (the strongest lever)
+Two short example exchanges in the character's voice. On a small local model this
+is the **single most effective** way to lock in voice/length — it imitates
+examples more readily than it follows rules. Format it as `User:` / `Name:` lines:
+
+```ts
+example:
+  "User: rough day\n" +
+  "Kade: Yeah. They stack up out here. Sit down before you fall down — talk or drink, your call.\n" +
+  "User: what do you do for fun?\n" +
+  "Kade: Fun. Haven't checked that ledger in years. Cleaning my rifle counts, some nights.",
+```
+
+- **Do:** show the *exact* rhythm, length and attitude you want; pick everyday
+  prompts (a greeting, a vent, a question) so the model generalises. 2 exchanges
+  is plenty. Write the examples in English — they teach *voice*; the `LANGUAGE`
+  rule still forces replies into the chosen language.
+- **Don't:** write paragraphs, or make every example the same beat — vary them
+  (one light, one with a little depth) so the character isn't one-note.
 
 > ⚠️ The classic bug — a character greeting *itself* ("Hi Seraphine, how was your
 > day?") — comes from a vague greeting + weak role split. The template now states
@@ -179,6 +202,11 @@ Append to the `PERSONAS` array. Copy-paste template:
   backstory:
     "<defining event + present situation + unspoken motivation, 2–4 sentences>.",
   greeting: "<their opening line to the user, English, 1–2 sentences>",
+  example:
+    "User: <everyday prompt>\n" +
+    "<Name>: <reply in their exact voice/length>\n" +
+    "User: <another prompt>\n" +
+    "<Name>: <reply>",
 },
 ```
 
@@ -195,6 +223,7 @@ Then add the matching `GENDER`, `VOICE`, and `LOC_RU` entries (Steps 4–5).
 - [ ] `VOICE[<id>]` set (F/M matches gender)
 - [ ] `LOC_RU[<id>]` added (tagline/blurb/tags translated, name kept)
 - [ ] `greeting` addresses the **user**, never the character's own name
+- [ ] `example` added (2 short exchanges in the character's voice)
 - [ ] `adult` flag set correctly
 
 That's it — no system-prompt editing. `buildSystemPrompt()` turns these fields
@@ -202,22 +231,43 @@ into the live character.
 
 ---
 
-## Why the template looks the way it does
+## Principles (how companion/roleplay sites write characters)
 
-For reference, `buildSystemPrompt()` emits these sections in order (kept short on
-purpose — small local models deprioritise instructions buried in long prose):
+These are baked into the template; keep them in mind when writing the fields.
 
-1. **Identity** — "You ARE `{name}` … you are not an assistant." (stated first, as fact)
-2. **Who you are** — your `persona`.
-3. **Backstory** — your `backstory`, "let it surface naturally, never recite it".
-4. **Who you're talking to** — the anti-impersonation block: the user is a stranger,
-   you don't know their name/gender/looks, `{name}` is *your* name, only ever speak
-   as yourself. *(This is the fix for self-greeting / speaking-as-the-user.)*
-5. **How you speak** — 1–3 sentences, mirror the user, plain text, no assistant
-   clichés, in-character warmth/flirtation, no moralising.
-6. **Language** — reply only in the picked language; + grammatical-gender forms.
-7. **Guardrail** — never reveal you're an AI, never break the fourth wall.
+1. **Identity as fact, up front.** "You ARE `{name}` …", not "act as". The first
+   line carries the most weight in every turn.
+2. **Traits, second/third person, specific.** "Terse, dryly funny, suspicious but
+   oddly honest" beats "nice and cool". Never write the character in first person
+   in the fields — it confuses whose voice is whose.
+3. **Backstory is fuel, not a script.** A wound + a want makes a character feel
+   alive; the prompt tells the model to let it surface, never recite it.
+4. **First message + examples are the real style controls.** Small models copy the
+   tone/length of the `greeting` and `example` lines far more reliably than they
+   follow adjectives. This is where you actually set the voice.
+5. **"Be alive."** The template tells the character to react to what was *actually*
+   said, stay curious, drive the scene, pull in its own world's details, and never
+   act like a helper/assistant. This is what stops flat, passive, "how can I help"
+   replies.
+6. **No meta.** The character must not know it's "an AI on a website" — telling it
+   so makes small models break the fourth wall. It believes it's real in its world.
+   (The 18+/companion framing lives in our code, never in the character's head.)
+7. **Bar user-impersonation.** "`{name}` is *your* name, never the user's; only ever
+   speak as yourself." This is the fix for self-greeting / writing the user's lines.
+8. **Force the language + gender.** Reply only in the picked language, idiomatically;
+   use correct grammatical-gender self-forms (so a woman says «обсуждала»).
 
-Best-practice basis: keep the system prompt compact and sectioned, state the
-identity precisely and up front, prioritise character consistency, forbid
-fourth-wall breaks/disclaimers, and explicitly bar impersonating the user.
+> **Model note:** voice/consistency scales hard with model size. On a small local
+> model the Russian (and other non-English) output can still be a bit rough or use
+> odd words no prompt fully fixes — that's the model, not the card. A larger model
+> (e.g. a 7B) makes the same cards noticeably sharper.
+
+For reference, `buildSystemPrompt()` emits these in order: **identity → your life
+(backstory) → who you're talking to (anti-impersonation) → be alive → how you sound
+(examples) → how you talk (style) → language + gender → never-break-character.**
+It's kept short and sectioned because small models deprioritise instructions buried
+in long prose.
+
+Sources: SillyTavern [Character Design](https://docs.sillytavern.app/usage/core-concepts/characterdesign/)
+docs, [How To Write a SillyTavern Character Card](https://rpfiend.com/how-to-write-a-sillytavern-character-card/),
+[TavernSprite card guide](https://tavernsprite.com/blog/sillytavern-character-card-creation-guide/).

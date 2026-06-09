@@ -21,6 +21,9 @@ export interface Persona {
   backstory: string;
   /** the character's opening line in a fresh chat */
   greeting: string;
+  /** a couple of short example exchanges that anchor the character's voice
+   *  (the strongest style lever on small models); see PERSONAS.md */
+  example?: string;
   /** optional override of the whole system block (flagship characters) */
   systemOverride?: string;
 }
