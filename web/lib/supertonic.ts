@@ -350,33 +350,47 @@ async function getOrt(): Promise<OrtNS> {
 // whole ~400 MB on every page load. Cache Storage has no per-item size cap.
 const TTS_CACHE = "sona-tts-v1";
 
-async function cachedFetch(url: string): Promise<Response> {
+// Fetch `url` once and persist the BYTES in Cache Storage. We store a freshly
+// built Response(buf) rather than the fetched Response, because HF `resolve`
+// URLs answer with a redirect to a CDN, and Chrome's cache.put() rejects a
+// redirected response — which silently dropped the cache and re-downloaded the
+// whole ~400 MB every load. Rebuilding the Response strips the redirect flag.
+async function cachedBytes(url: string): Promise<ArrayBuffer> {
   if (typeof caches !== "undefined") {
     try {
       const cache = await caches.open(TTS_CACHE);
       const hit = await cache.match(url);
-      if (hit) return hit;
+      if (hit) {
+        console.log(`[tts] cache hit: ${url.split("/").pop()}`);
+        return await hit.arrayBuffer();
+      }
+      console.log(`[tts] downloading: ${url.split("/").pop()}`);
       const resp = await fetch(url);
-      if (resp.ok) await cache.put(url, resp.clone());
-      return resp;
+      if (!resp.ok) throw new Error(`fetch ${url} -> ${resp.status}`);
+      const buf = await resp.arrayBuffer();
+      const type = resp.headers.get("content-type") || "application/octet-stream";
+      await cache.put(url, new Response(buf, { headers: { "content-type": type } }));
+      console.log(`[tts] cached: ${url.split("/").pop()} (${Math.round(buf.byteLength / 1e6)} MB)`);
+      return buf;
     } catch (e) {
-      console.warn("[tts] cache unavailable, fetching directly", e);
+      console.warn("[tts] cache failed, fetching directly", e);
     }
   }
-  return fetch(url);
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`fetch ${url} -> ${resp.status}`);
+  return await resp.arrayBuffer();
 }
 
 async function fetchJSON<T>(url: string): Promise<T> {
-  const r = await cachedFetch(url);
-  if (!r.ok) throw new Error(`fetch ${url} -> ${r.status}`);
-  return (await r.json()) as T;
+  const buf = await cachedBytes(url);
+  return JSON.parse(new TextDecoder().decode(buf)) as T;
 }
 
 async function createSession(ort: OrtNS, url: string): Promise<Session> {
   // Prefer WebGPU (fast); fall back to WASM if it isn't available. The reply is
   // synthesized after the LLM finishes generating, so they don't fight for the
   // GPU at the same instant.
-  const buf = await (await cachedFetch(url)).arrayBuffer();
+  const buf = await cachedBytes(url);
   try {
     return await ort.InferenceSession.create(buf, {
       executionProviders: ["webgpu"],
