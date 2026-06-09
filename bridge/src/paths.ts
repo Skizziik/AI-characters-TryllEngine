@@ -13,5 +13,7 @@ export const WEIGHTS_DIR = process.env.TRYLL_WEIGHTS_DIR ?? path.join(INSTALL_DI
 export const SERVER_EXE = path.join(SERVER_DIR, "tryll_server.exe");
 export const LLM_DIR = path.join(WEIGHTS_DIR, "llm");
 
-/** Base URL the components are fetched from (set to our R2 bucket in prod). */
-export const CDN_BASE = process.env.TRYLL_CDN ?? "https://cdn.tryllengine.com/stack";
+/** Base URL the components are fetched from. Default = our GitHub release assets. */
+export const CDN_BASE =
+  process.env.TRYLL_CDN ??
+  "https://github.com/Skizziik/AI-characters-TryllEngine/releases/download/v0.1.0";

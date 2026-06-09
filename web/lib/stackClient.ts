@@ -16,9 +16,10 @@ import type { Persona, StackState } from "./types";
 export const BRIDGE_BASE =
   process.env.NEXT_PUBLIC_BRIDGE_URL ?? "http://127.0.0.1:9123";
 
-/** One-time portable runtime the user downloads + runs once (hosted on our CDN). */
+/** One-time portable runtime the user downloads + runs once. */
 export const DOWNLOAD_URL =
-  process.env.NEXT_PUBLIC_DOWNLOAD_URL ?? "https://cdn.tryllengine.com/stack/TryllSetup.exe";
+  process.env.NEXT_PUBLIC_DOWNLOAD_URL ??
+  "https://github.com/Skizziik/AI-characters-TryllEngine/releases/download/v0.1.0/TryllSetup.exe";
 
 function triggerDownload(url: string) {
   if (typeof document === "undefined") return;
