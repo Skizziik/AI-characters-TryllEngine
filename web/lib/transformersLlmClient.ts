@@ -70,7 +70,10 @@ export class TransformersLlmClient implements StackClient {
           const pct = Math.round(overall);
           if (pct !== last) {
             last = pct;
-            onUpdate({ phase: "downloading", progress: overall / 100, detail: `Gemma 4 · ${pct}%` });
+            // After 100% there's a silent step where the weights are uploaded to
+            // the GPU and shaders compile — say so, so it doesn't look frozen.
+            const detail = pct >= 100 ? "Загрузка в видеопамять…" : `Gemma 4 · ${pct}%`;
+            onUpdate({ phase: "downloading", progress: overall / 100, detail });
           }
         } else if (info.status === "done" && info.file) {
           fileProgress.set(info.file, 100);
@@ -80,12 +83,15 @@ export class TransformersLlmClient implements StackClient {
       try {
         const [model, processor] = await Promise.all([
           tf.Gemma4ForConditionalGeneration.from_pretrained(MODEL_ID, {
-            // Per-component dtype. The embedding table is the heaviest part at
-            // q4f16 (~2 GB, because Gemma's vocab is 256k); int8 ("q8" →
-            // *_quantized) drops it to ~0.78 GB with negligible quality loss.
-            // Everything must be listed — unspecified modules default to fp32.
+            // Per-component dtype, all WebGPU-safe. int8 ("q8") would be smallest
+            // but onnxruntime-web's WebGPU EP doesn't support int8 ops — it hangs
+            // session init (transformers.js #1317). fp16 is fully supported AND,
+            // for this model, the fp16 embedding table (~1.34 GB) is actually
+            // smaller than q4f16 (~2.0 GB) — so this is both lighter and slightly
+            // more accurate. Decoder stays q4f16 (the WebGPU-tuned 4-bit format).
+            // All modules must be listed or an omitted one defaults to fp32.
             dtype: {
-              embed_tokens: "q8",
+              embed_tokens: "fp16",
               decoder_model_merged: "q4f16",
               vision_encoder: "q4f16",
               audio_encoder: "q4f16",
