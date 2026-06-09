@@ -165,14 +165,16 @@ export function ChatView({
         const ac = new AbortController();
         abortRef.current = ac;
         let acc = "";
-        // Seed the opening line from the persona's hand-written greeting: verbatim
-        // in English, rendered in-character for other languages. This keeps the
-        // first line correct (it can't greet itself or address the user wrongly).
-        const seed = persona.greeting;
+        // English: use the persona's hand-written greeting verbatim (best
+        // quality, zero cost). Other languages: GENERATE a fresh greeting in
+        // that language — asking a 3B model to "translate this line" is
+        // unreliable (it often just echoes the English), so we let it speak
+        // its own opening instead. The system prompt's anti-impersonation
+        // block keeps it greeting the user, not itself.
         const greetInstr =
           chatLang === "en"
-            ? `This is your very first line to the user. Say exactly this, word for word, and nothing else: "${seed}"`
-            : `This is your very first line to the user. Say this opening line in ${conv.language}, in your own natural voice — output only that line, nothing else: "${seed}"`;
+            ? `This is your very first line to the user. Say exactly this, word for word, and nothing else: "${persona.greeting}"`
+            : `This is the very first message of the chat. Greet the user — a newcomer you've just met, whose name you don't know — in character, written in ${conv.language}, in one or two short natural sentences. Greet THEM and invite them to talk; never use your own name for them.`;
         try {
           await client.chat(
             id,
