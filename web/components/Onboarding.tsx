@@ -144,24 +144,19 @@ export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
         </AnimatePresence>
       </div>
 
-      {/* nav — 3-column grid: the primary button sits in the middle column,
-          dead-center on every step; Back lives in the left column (invisible
-          on step 0) so it never pushes the primary button around. */}
-      <div className="mt-12 grid w-full grid-cols-[1fr_auto_1fr] items-center gap-3">
-        <div className="flex justify-end">
+      {/* nav — centered pair; the row sits at a fixed height thanks to the
+          fixed-size stage above, so buttons never drift vertically. The pair
+          re-centers once when Back appears after step 0 — by design. */}
+      <div className="mt-12 flex items-center justify-center gap-3">
+        {step > 0 && (
           <button
             onClick={() => setStep((s) => Math.max(0, s - 1))}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border border-border-soft px-5 py-2.5 text-sm text-muted transition hover:text-fg",
-              step === 0 && "invisible",
-            )}
-            tabIndex={step === 0 ? -1 : 0}
-            aria-hidden={step === 0}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border-soft px-5 py-2.5 text-sm text-muted transition hover:text-fg"
           >
             <ArrowLeft className="size-4" />
             {t("onb.back")}
           </button>
-        </div>
+        )}
 
         {step < last ? (
           <button
@@ -186,7 +181,6 @@ export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
             <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
           </button>
         )}
-        <div />
       </div>
       </div>
     </section>
