@@ -63,7 +63,9 @@ export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
         ))}
       </div>
 
-      <div className="relative w-full">
+      {/* Fixed-height stage (on ≥sm) so every step occupies the same box and
+          the nav buttons below never move between steps. */}
+      <div className="relative flex min-h-[22rem] w-full items-center justify-center sm:h-[26rem] sm:min-h-0">
         <AnimatePresence mode="wait">
           <motion.div
             key={step}
@@ -71,7 +73,7 @@ export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -24 }}
             transition={{ duration: 0.3 }}
-            className="flex flex-col items-center text-center"
+            className="flex w-full flex-col items-center text-center"
           >
             {step === 0 && (
               <>
@@ -142,22 +144,26 @@ export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
         </AnimatePresence>
       </div>
 
-      {/* nav */}
+      {/* nav — Back is always rendered (invisible on step 0) so Continue
+          keeps the exact same screen position on every step. */}
       <div className="mt-12 flex items-center gap-3">
-        {step > 0 && (
-          <button
-            onClick={() => setStep((s) => Math.max(0, s - 1))}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border-soft px-5 py-2.5 text-sm text-muted transition hover:text-fg"
-          >
-            <ArrowLeft className="size-4" />
-            {t("onb.back")}
-          </button>
-        )}
+        <button
+          onClick={() => setStep((s) => Math.max(0, s - 1))}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full border border-border-soft px-5 py-2.5 text-sm text-muted transition hover:text-fg",
+            step === 0 && "invisible",
+          )}
+          tabIndex={step === 0 ? -1 : 0}
+          aria-hidden={step === 0}
+        >
+          <ArrowLeft className="size-4" />
+          {t("onb.back")}
+        </button>
 
         {step < last ? (
           <button
             onClick={() => setStep((s) => Math.min(last, s + 1))}
-            className="group inline-flex items-center gap-2 rounded-full gradient-primary px-7 py-2.5 font-medium text-white ring-glow transition hover:brightness-110 active:scale-[0.98]"
+            className="group inline-flex min-w-44 items-center justify-center gap-2 rounded-full gradient-primary px-7 py-2.5 font-medium text-white ring-glow transition hover:brightness-110 active:scale-[0.98]"
           >
             {t("onb.continue")}
             <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
@@ -167,7 +173,7 @@ export function Onboarding({ state, onActivate, onEnter, onSkip }: Props) {
             onClick={onEnter}
             disabled={!ready}
             className={cn(
-              "group inline-flex items-center gap-2 rounded-full px-7 py-2.5 font-medium transition",
+              "group inline-flex min-w-44 items-center justify-center gap-2 rounded-full px-7 py-2.5 font-medium transition",
               ready
                 ? "gradient-primary text-white ring-glow hover:brightness-110 active:scale-[0.98]"
                 : "cursor-not-allowed border border-border-soft text-muted-2",
